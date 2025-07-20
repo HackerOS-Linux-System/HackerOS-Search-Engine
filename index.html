@@ -23,7 +23,7 @@
       overflow: hidden;
     }
 
-    /* Efekt cząsteczek z liniami */
+    /* Particle effect with lines */
     .particles {
       position: fixed;
       top: 0;
@@ -34,70 +34,40 @@
       z-index: 1;
     }
 
-    .header {
-      position: absolute;
-      top: 20px;
-      left: 20px;
-      z-index: 10;
-    }
-
-    .header img {
-      width: 60px;
-      height: auto;
-      transition: transform 0.3s ease, filter 0.3s ease;
-    }
-
-    .header img:hover {
-      transform: scale(1.15) rotate(5deg);
-      filter: brightness(1.3) drop-shadow(0 0 10px rgba(255, 255, 255, 0.4));
-    }
-
     .main-container {
       text-align: center;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 35px;
+      gap: 25px;
       z-index: 10;
-      animation: fadeIn 1.5s ease-in-out;
+      animation: fadeIn 1.2s ease-in-out;
     }
 
     @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(40px); }
+      from { opacity: 0; transform: translateY(30px); }
       to { opacity: 1; transform: translateY(0); }
-    }
-
-    .main-logo {
-      width: 300px;
-      height: auto;
-      opacity: 0.95;
-      filter: drop-shadow(0 0 25px rgba(255, 255, 255, 0.4));
-      animation: glowPulse 4s infinite ease-in-out;
-    }
-
-    @keyframes glowPulse {
-      0%, 100% { filter: drop-shadow(0 0 20px rgba(255, 255, 255, 0.3)); }
-      50% { filter: drop-shadow(0 0 30px rgba(255, 255, 255, 0.5)); }
     }
 
     .search-container {
       position: relative;
       width: 100%;
-      max-width: 850px;
-      background: linear-gradient(145deg, #2d2d2d, #3a3a3a);
-      border-radius: 70px;
-      padding: 10px;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 2px 8px rgba(255, 255, 255, 0.15);
-      transition: box-shadow 0.4s ease, transform 0.4s ease;
+      max-width: 800px;
+      background: linear-gradient(145deg, #2a2a2a, #363636);
+      border-radius: 50px;
+      padding: 8px;
+      box-shadow: 0 8px 25px rgba(0, 0, 0, 0.5), inset 0 2px 6px rgba(255, 255, 255, 0.1);
+      transition: box-shadow 0.3s ease, transform 0.3s ease;
       z-index: 10;
       display: flex;
       align-items: center;
       justify-content: center;
     }
 
-    .search-container:hover {
-      box-shadow: 0 12px 35px rgba(255, 255, 255, 0.25), inset 0 2px 8px rgba(255, 255, 255, 0.2);
-      transform: translateY(-4px);
+    .search-container:hover,
+    .search-container:focus-within {
+      box-shadow: 0 10px 30px rgba(255, 255, 255, 0.2), inset Poincaré 2px 6px rgba(255, 255, 255, 0.15);
+      transform: translateY(-3px);
     }
 
     .search-form {
@@ -109,163 +79,151 @@
 
     .search-input {
       width: 100%;
-      padding: 20px 70px 20px 30px;
+      padding: 18px 60px 18px 25px;
       background: transparent;
-      border: 3px solid #e0e0e0;
-      border-radius: 70px;
+      border: 2px solid #d0d0d0;
+      border-radius: 50px;
       color: #ffffff;
-      font-size: 19px;
+      font-size: 18px;
       outline: none;
-      transition: border-color 0.4s ease, box-shadow 0.4s ease, background-color 0.4s ease;
+      transition: border-color 0.3s ease, box-shadow 0.3s ease, background-color 0.3s ease;
     }
 
     .search-input:focus {
       border-color: #ffffff;
-      box-shadow: 0 0 20px rgba(255, 255, 255, 0.6), inset 0 0 8px rgba(255, 255, 255, 0.3);
-      background: rgba(255, 255, 255, 0.08);
+      box-shadow: 0 0 15px rgba(255, 255, 255, 0.5), inset 0 0 6px rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.05);
     }
 
     .search-input::placeholder {
-      color: #b0b0b0;
+      color: #a0a0a0;
       font-style: italic;
       transition: opacity 0.3s ease;
     }
 
     .search-input:focus::placeholder {
-      opacity: 0.5;
+      opacity: 0.6;
     }
 
     .search-button {
       position: absolute;
-      right: 10px;
-      background: linear-gradient(145deg, #e0e0e0, #ffffff);
+      right: 8px;
+      background: linear-gradient(145deg, #d0d0d0, #f0f0f0);
       border: none;
       border-radius: 50%;
       cursor: pointer;
-      padding: 14px;
-      transition: background 0.4s ease, transform 0.4s ease, box-shadow 0.4s ease;
-      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+      padding: 12px;
+      transition: background 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
     }
 
-    .search-button:hover {
+    .search-button:hover,
+    .search-button:focus {
       background: #ffffff;
-      transform: scale(1.25) rotate(8deg);
-      box-shadow: 0 5px 12px rgba(255, 255, 255, 0.4);
+      transform: scale(1.2) rotate(5deg);
+      box-shadow: 0 4px 10px rgba(255, 255, 255, 0.3);
     }
 
     .search-button img {
-      width: 30px;
-      height: 30px;
-      filter: invert(0.2);
-      transition: filter 0.4s ease, transform 0.4s ease;
+      width: 28px;
+      height: 28px;
+      filter: invert(0.15);
+      transition: filter 0.3s ease, transform 0.3s ease;
     }
 
-    .search-button:hover img {
+    .search-button:hover img,
+    .search-button:focus img {
       filter: invert(0);
-      transform: rotate(-8deg);
+      transform: rotate(-5deg);
     }
 
     .footer {
       position: absolute;
-      bottom: 15px;
+      bottom: 10px;
       text-align: center;
-      font-size: 15px;
-      color: #b0b0b0;
+      font-size: 14px;
+      color: #a0a0a0;
       z-index: 10;
       display: flex;
       align-items: center;
-      gap: 5px;
+      gap: 4px;
       font-family: 'Arial', sans-serif;
     }
 
     .footer a {
-      color: #58a6ff;
+      color: #4a90e2;
       text-decoration: none;
       transition: color 0.3s ease;
     }
 
-    .footer a:hover {
+    .footer a:hover,
+    .footer a:focus {
       color: #ffffff;
     }
 
     .footer img {
-      width: 16px;
-      height: 16px;
-      filter: invert(0.7);
+      width: 14px;
+      height: 14px;
+      filter: invert(0.6);
     }
 
     @media (max-width: 600px) {
-      .main-logo {
-        width: 220px;
-      }
-
       .search-container {
-        max-width: 90%;
-        padding: 8px;
+        max-width: 95%;
+        padding: 6px;
       }
 
       .search-input {
-        font-size: 17px;
-        padding: 16px 60px 16px 25px;
+        font-size: 16px;
+        padding: 14px 50px 14px 20px;
       }
 
       .search-button {
-        padding: 12px;
+        padding: 10px;
       }
 
       .search-button img {
-        width: 26px;
-        height: 26px;
-      }
-
-      .header img {
-        width: 50px;
+        width: 24px;
+        height: 24px;
       }
 
       .footer {
-        font-size: 13px;
+        font-size: 12px;
       }
 
       .footer img {
-        width: 14px;
-        height: 14px;
+        width: 12px;
+        height: 12px;
       }
     }
 
     @media (min-width: 1200px) {
       .search-container {
-        max-width: 900px;
-      }
-
-      .main-logo {
-        width: 320px;
+        max-width: 850px;
       }
     }
   </style>
 </head>
 <body>
   <canvas class="particles" id="particles"></canvas>
-  <div class="header">
-    <img src="/usr/share/HackerOS/ICONS/HackerOS.png" alt="HackerOS Logo">
-  </div>
   <div class="main-container">
-    <img class="main-logo" src="/usr/share/HackerOS/ICONS/Plymouth-Icons/watermark.png" alt="HackerOS Watermark">
     <div class="search-container">
-      <form class="search-form" action="https://www.startpage.com/sp/search" method="GET">
-        <input type="text" class="search-input" name="query" placeholder="Wyszukaj w Startpage..." required>
-        <button type="submit" class="search-button">
-          <img src="https://cdn-icons-png.flaticon.com/512/622/622669.png" alt="Search Icon">
+      <form class="search-form" action="https://www.startpage.com/sp/search" method="GET" role="search" aria-label="Wyszukiwarka Startpage">
+        <input type="text" class="search-input" name="query" placeholder="Wyszukaj w Startpage..." required aria-label="Wprowadź frazę wyszukiwania">
+        <button type="submit" class="search-button" aria-label="Szukaj">
+          <img src="https://cdn-icons-png.flaticon.com/512/622/622669.png" alt="Ikona wyszukiwania">
         </button>
       </form>
     </div>
   </div>
   <div class="footer">
-    <img src="https://cdn-icons-png.flaticon.com/512/622/622669.png" alt="Startpage Icon">
-    Powered by <a href="https://www.startpage.com" target="_blank">Startpage</a> | HackerOS Search © 2025
+    <img src="https://cdn-icons-png.flaticon.com/512/622/622669.png" alt="Ikona Startpage">
+    Powered by <a href="https://www.startpage.com" target="_blank" aria-label="Strona Startpage">Startpage</a> | Search © 2025
   </div>
   <script>
-    // Walidacja formularza
-    document.querySelector('.search-form').addEventListener('submit', function(e) {
+    // Form validation
+    const searchForm = document.querySelector('.search-form');
+    searchForm.addEventListener('submit', function(e) {
       const query = document.querySelector('.search-input').value.trim();
       if (!query) {
         e.preventDefault();
@@ -273,7 +231,7 @@
       }
     });
 
-    // Animacja placeholder
+    // Placeholder animation
     const placeholderText = "Wyszukaj w Startpage...";
     const input = document.querySelector('.search-input');
     let i = 0;
@@ -281,109 +239,121 @@
       if (i < placeholderText.length) {
         input.placeholder = placeholderText.slice(0, i + 1);
         i++;
-        setTimeout(typePlaceholder, 70);
+        setTimeout(typePlaceholder, 60);
       } else {
         setTimeout(() => {
           i = 0;
           input.placeholder = "";
           typePlaceholder();
-        }, 2500);
+        }, 2000);
       }
     }
     typePlaceholder();
 
-    // Efekt cząsteczek z liniami
+    // Particle effect with lines
     const canvas = document.getElementById('particles');
     const ctx = canvas.getContext('2d');
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
+    if (ctx) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
 
-    const particlesArray = [];
-    const numberOfParticles = 60;
+      const particlesArray = [];
+      const numberOfParticles = 50;
 
-    class Particle {
-      constructor() {
-        this.x = Math.random() * canvas.width;
-        this.y = Math.random() * canvas.height;
-        this.size = Math.random() * 2 + 1;
-        this.speedX = Math.random() * 0.4 - 0.2;
-        this.speedY = Math.random() * 0.4 - 0.2;
+      class Particle {
+        constructor() {
+          this.x = Math.random() * canvas.width;
+          this.y = Math.random() * canvas.height;
+          this.size = Math.random() * 1.5 + 0.5;
+          this.speedX = Math.random() * 0.3 - 0.15;
+          this.speedY = Math.random() * 0.3 - 0.15;
+          this.opacity = Math.random() * 0.4 + 0.2;
+        }
+        update() {
+          this.x += this.speedX;
+          this.y += this.speedY;
+          if (this.size > 0.1) this.size -= 0.005;
+          if (this.opacity > 0.1) this.opacity -= 0.001;
+        }
+        draw() {
+          ctx.fillStyle = `rgba(255, 255, 255, ${this.opacity})`;
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fill();
+        }
       }
-      update() {
-        this.x += this.speedX;
-        this.y += this.speedY;
-        if (this.size > 0.2) this.size -= 0.008;
-      }
-      draw() {
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
-        ctx.beginPath();
-        ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
 
-    function initParticles() {
-      for (let i = 0; i < numberOfParticles; i++) {
-        particlesArray.push(new Particle());
+      function initParticles() {
+        for (let i = 0; i < numberOfParticles; i++) {
+          particlesArray.push(new Particle());
+        }
       }
-    }
 
-    function connectParticles() {
-      for (let i = 0; i < particlesArray.length; i++) {
-        for (let j = i + 1; j < particlesArray.length; j++) {
-          const dx = particlesArray[i].x - particlesArray[j].x;
-          const dy = particlesArray[i].y - particlesArray[j].y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          if (distance < 100) {
-            ctx.strokeStyle = `rgba(255, 255, 255, ${1 - distance / 100})`;
-            ctx.lineWidth = 0.5;
-            ctx.beginPath();
-            ctx.moveTo(particlesArray[i].x, particlesArray[i].y);
-            ctx.lineTo(particlesArray[j].x, particlesArray[j].y);
-            ctx.stroke();
+      function connectParticles() {
+        for (let i = 0; i < particlesArray.length; i++) {
+          for (let j = i + 1; j < particlesArray.length; j++) {
+            const dx = particlesArray[i].x - particlesArray[j].x;
+            const dy = particlesArray[i].y - particlesArray[j].y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            if (distance < 80) {
+              ctx.strokeStyle = `rgba(255, 255, 255, ${(1 - distance / 80) * 0.5})`;
+              ctx.lineWidth = 0.4;
+              ctx.beginPath();
+              ctx.moveTo(particlesArray[i].x, particlesArray[i].y);
+              ctx.lineTo(particlesArray[j].x, particlesArray[j].y);
+              ctx.stroke();
+            }
           }
         }
       }
-    }
 
-    function animateParticles() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      for (let i = 0; i < particlesArray.length; i++) {
-        particlesArray[i].update();
-        particlesArray[i].draw();
-        if (particlesArray[i].size <= 0.2) {
-          particlesArray.splice(i, 1);
-          particlesArray.push(new Particle());
-          i--;
+      function animateParticles() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        for (let i = 0; i < particlesArray.length; i++) {
+          particlesArray[i].update();
+          particlesArray[i].draw();
+          if (particlesArray[i].size <= 0.1 || particlesArray[i].opacity <= 0.1) {
+            particlesArray.splice(i, 1);
+            particlesArray.push(new Particle());
+            i--;
+          }
         }
+        connectParticles();
+        requestAnimationFrame(animateParticles);
       }
-      connectParticles();
-      requestAnimationFrame(animateParticles);
+
+      initParticles();
+      animateParticles();
+
+      window.addEventListener('resize', () => {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+      });
+    } else {
+      console.warn('Canvas not supported in this browser.');
     }
 
-    initParticles();
-    animateParticles();
-
-    window.addEventListener('resize', () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    });
-
-    // Reakcja paska wyszukiwania na ruch myszy
+    // Search bar mouse movement reaction
+    const searchContainer = document.querySelector('.search-container');
     document.addEventListener('mousemove', (e) => {
-      const searchContainer = document.querySelector('.search-container');
       const rect = searchContainer.getBoundingClientRect();
       const centerX = rect.left + rect.width / 2;
       const centerY = rect.top + rect.height / 2;
-      const maxTilt = 5;
+      const maxTilt = 4;
       const tiltX = ((centerY - e.clientY) / centerY) * maxTilt;
       const tiltY = ((centerX - e.clientX) / centerX) * maxTilt;
-      searchContainer.style.transform = `translateY(-4px) rotateX(${tiltX}deg) rotateY(${tiltY}deg)`;
+      searchContainer.style.transform = `translateY(-3px) rotateX(${tiltX}deg) rotateY(${tiltY}deg)`;
     });
 
     document.addEventListener('mouseout', () => {
-      const searchContainer = document.querySelector('.search-container');
       searchContainer.style.transform = 'translateY(0) rotateX(0deg) rotateY(0deg)';
+    });
+
+    // Keyboard accessibility
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && document.activeElement !== input) {
+        input.focus();
+      }
     });
   </script>
 </body>
