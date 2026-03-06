@@ -14,6 +14,7 @@
             <img src="HackerOS.png" alt="HackerOS Logo">
         </a>
     </div>
+    <div class="theme-toggle" id="themeToggle">Change</div>
     <section class="main-container">
         <div class="search-container">
             <form class="search-form" action="https://www.ecosia.org/search" method="GET" role="search" aria-label="Wyszukiwarka Ecosia">
@@ -24,10 +25,12 @@
             </form>
         </div>
     </section>
+    <div class="bottom-left-link">
+        <a href="https://hackeros-linux-system.github.io/HackerOS-Website/hacker-lang/docs.html" target="_blank" aria-label="Discover our programming language">Discover our programming language</a>
+    </div>
     <footer>
-        <img src="https://cdn-icons-png.flaticon.com/512/622/622669.png" alt="Ikona Ecosia">
         Powered by <a href="https://www.ecosia.org" target="_blank" aria-label="Strona Ecosia">Ecosia</a> |
-        <a href="https://hackeros-linux-system.github.io/HackerOS-Website/" target="_blank" aria-label="Strona HackerOS">HackerOS Website</a> | Search © 2026
+        <a href="https://hackeros-linux-system.github.io/HackerOS-Website/" target="_blank" aria-label="Strona HackerOS">HackerOS</a> | © 2026
     </footer>
     <script>
         // Ensure DOM is fully loaded before accessing elements
@@ -35,64 +38,68 @@
             // Particle animation
             const canvas = document.getElementById('particles');
             const ctx = canvas.getContext('2d');
+            let isSpaceTheme = false;
             if (ctx) {
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
-
                 const particlesArray = [];
-                const numberOfParticles = 80; // Increased for more lively effect
-                let mouse = { x: null, y: null, radius: 120 }; // Larger radius for stronger interaction
-
+                let mouse = { x: null, y: null, radius: 100 };
                 class Particle {
                     constructor() {
                         this.x = Math.random() * canvas.width;
                         this.y = Math.random() * canvas.height;
-                        this.size = Math.random() * 3 + 1; // Larger size range
+                        this.size = Math.random() * (isSpaceTheme ? 1.5 : 2) + (isSpaceTheme ? 0.5 : 1);
                         this.baseSize = this.size;
-                        this.speedX = Math.random() * 0.4 - 0.2; // Faster movement
-                        this.speedY = Math.random() * 0.4 - 0.2;
-                        this.opacity = Math.random() * 0.5 + 0.3; // Dynamic opacity
-                        this.hue = Math.random() * 60 + 180; // Subtle blue-gray hues
+                        this.speedX = Math.random() * (isSpaceTheme ? 0.2 : 0.3) - (isSpaceTheme ? 0.1 : 0.15);
+                        this.speedY = Math.random() * (isSpaceTheme ? 0.2 : 0.3) - (isSpaceTheme ? 0.1 : 0.15);
+                        this.opacity = Math.random() * (isSpaceTheme ? 0.6 : 0.4) + (isSpaceTheme ? 0.4 : 0.2);
+                        this.hue = Math.random() * 30 + 200;
                     }
                     update() {
                         this.x += this.speedX;
                         this.y += this.speedY;
-                        if (this.size > 0.5) this.size -= 0.004; // Moderate size reduction
-                        if (this.opacity > 0.3) this.opacity -= 0.0004; // Moderate fade
-
-                        // Enhanced mouse interaction
-                        if (mouse.x !== null && mouse.y !== null) {
+                        if (!isSpaceTheme) {
+                            if (this.size > 0.5) this.size -= 0.003;
+                            if (this.opacity > 0.2) this.opacity -= 0.0003;
+                        }
+                        // Simpler mouse interaction
+                        if (mouse.x !== null && mouse.y !== null && !isSpaceTheme) {
                             const dx = mouse.x - this.x;
                             const dy = mouse.y - this.y;
                             const distance = Math.sqrt(dx * dx + dy * dy);
                             if (distance < mouse.radius) {
                                 const force = (mouse.radius - distance) / mouse.radius;
-                                this.speedX += dx * force * 0.015; // Stronger force
-                                this.speedY += dy * force * 0.015;
-                                this.size = this.baseSize + force * 2.5; // More noticeable size increase
+                                this.speedX += dx * force * 0.01;
+                                this.speedY += dy * force * 0.01;
+                                this.size = this.baseSize + force * 1.5;
                             }
                         }
-
                         if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
                         if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
                     }
                     draw() {
-                        ctx.fillStyle = `hsla(${this.hue}, 30%, 80%, ${this.opacity})`;
+                        let fillStyle;
+                        if (isSpaceTheme) {
+                            fillStyle = `hsla(0, 0%, 100%, ${this.opacity})`;
+                        } else {
+                            fillStyle = `hsla(${this.hue}, 20%, 90%, ${this.opacity})`;
+                        }
+                        ctx.fillStyle = fillStyle;
                         ctx.beginPath();
                         ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
                         ctx.fill();
                     }
                 }
-
                 function connectParticles() {
+                    if (isSpaceTheme) return;
                     for (let i = 0; i < particlesArray.length; i++) {
                         for (let j = i + 1; j < particlesArray.length; j++) {
                             const dx = particlesArray[i].x - particlesArray[j].x;
                             const dy = particlesArray[i].y - particlesArray[j].y;
                             const distance = Math.sqrt(dx * dx + dy * dy);
-                            if (distance < 130) { // Increased connection distance
-                                ctx.strokeStyle = `hsla(${particlesArray[i].hue}, 30%, 80%, ${(1 - distance / 130) * 0.35})`; // More visible lines
-                                ctx.lineWidth = 0.5;
+                            if (distance < 100) {
+                                ctx.strokeStyle = `hsla(${particlesArray[i].hue}, 20%, 90%, ${(1 - distance / 100) * 0.2})`;
+                                ctx.lineWidth = 0.3;
                                 ctx.beginPath();
                                 ctx.moveTo(particlesArray[i].x, particlesArray[i].y);
                                 ctx.lineTo(particlesArray[j].x, particlesArray[j].y);
@@ -101,20 +108,19 @@
                         }
                     }
                 }
-
                 function initParticles() {
                     particlesArray.length = 0;
+                    const numberOfParticles = isSpaceTheme ? 200 : 50;
                     for (let i = 0; i < numberOfParticles; i++) {
                         particlesArray.push(new Particle());
                     }
                 }
-
                 function animateParticles() {
                     ctx.clearRect(0, 0, canvas.width, canvas.height);
                     for (let i = 0; i < particlesArray.length; i++) {
                         particlesArray[i].update();
                         particlesArray[i].draw();
-                        if (particlesArray[i].size <= 0.5 || particlesArray[i].opacity <= 0.3) {
+                        if (particlesArray[i].size <= 0.5 || particlesArray[i].opacity <= 0.2) {
                             particlesArray.splice(i, 1);
                             particlesArray.push(new Particle());
                             i--;
@@ -123,30 +129,43 @@
                     connectParticles();
                     requestAnimationFrame(animateParticles);
                 }
-
-                initParticles();
-                animateParticles();
-
                 // Mouse movement for particle interaction
                 document.addEventListener('mousemove', (e) => {
                     mouse.x = e.clientX;
                     mouse.y = e.clientY;
                 });
-
                 document.addEventListener('mouseout', () => {
                     mouse.x = null;
                     mouse.y = null;
                 });
-
                 window.addEventListener('resize', () => {
                     canvas.width = window.innerWidth;
                     canvas.height = window.innerHeight;
                     initParticles();
                 });
+                // Theme toggle
+                const themeToggle = document.getElementById('themeToggle');
+                let currentTheme = localStorage.getItem('theme') || 'default';
+                applyTheme(currentTheme);
+                themeToggle.addEventListener('click', () => {
+                    currentTheme = currentTheme === 'default' ? 'space' : 'default';
+                    localStorage.setItem('theme', currentTheme);
+                    applyTheme(currentTheme);
+                });
+                function applyTheme(theme) {
+                    isSpaceTheme = theme === 'space';
+                    if (isSpaceTheme) {
+                        document.body.classList.add('space-theme');
+                    } else {
+                        document.body.classList.remove('space-theme');
+                    }
+                    initParticles();
+                }
+                initParticles();
+                animateParticles();
             } else {
                 console.warn('Canvas not supported in this browser.');
             }
-
             // Form validation
             const searchForm = document.querySelector('.search-form');
             const input = document.querySelector('.search-input');
@@ -159,45 +178,8 @@
                     }
                 });
             }
-
-            // Placeholder animation
-            const placeholderText = "Wyszukaj w Ecosia...";
-            if (input) {
-                let i = 0;
-                function typePlaceholder() {
-                    if (i < placeholderText.length) {
-                        input.placeholder = placeholderText.slice(0, i + 1);
-                        i++;
-                        setTimeout(typePlaceholder, 50);
-                    } else {
-                        setTimeout(() => {
-                            i = 0;
-                            input.placeholder = "";
-                            typePlaceholder();
-                        }, 2000);
-                    }
-                }
-                typePlaceholder();
-            }
-
-            // Search bar mouse movement reaction
-            const searchContainer = document.querySelector('.search-container');
-            if (searchContainer) {
-                document.addEventListener('mousemove', (e) => {
-                    const rect = searchContainer.getBoundingClientRect();
-                    const centerX = rect.left + rect.width / 2;
-                    const centerY = rect.top + rect.height / 2;
-                    const maxTilt = 5; // Restored original tilt for livelier effect
-                    const tiltX = ((centerY - e.clientY) / centerY) * maxTilt;
-                    const tiltY = ((centerX - e.clientX) / centerX) * maxTilt;
-                    searchContainer.style.transform = `translateY(-5px) rotateX(${tiltX}deg) rotateY(${tiltY}deg)`;
-                });
-
-                document.addEventListener('mouseout', () => {
-                    searchContainer.style.transform = 'translateY(0) rotateX(0deg) rotateY(0deg)';
-                });
-            }
-
+            // Remove placeholder animation for minimalism
+            // Search bar mouse movement reaction removed for minimalism
             // Keyboard accessibility
             if (input) {
                 document.addEventListener('keydown', (e) => {
@@ -206,7 +188,6 @@
                     }
                 });
             }
-
             // Language detection
             const userLang = navigator.language || navigator.userLanguage;
             if (userLang.startsWith('pl')) {
@@ -219,14 +200,16 @@
                 const footer = document.querySelector('footer');
                 if (footer) {
                     footer.innerHTML = `
-                        <img src="https://cdn-icons-png.flaticon.com/512/622/622669.png" alt="Ecosia Icon">
                         Powered by <a href="https://www.ecosia.org" target="_blank" aria-label="Ecosia Website">Ecosia</a> |
-                        <a href="https://hackeros-linux-system.github.io/HackerOS-Website/" target="_blank" aria-label="HackerOS Website">HackerOS Website</a> | Search © 2026
+                        <a href="https://hackeros-linux-system.github.io/HackerOS-Website/" target="_blank" aria-label="HackerOS Website">HackerOS</a> | © 2026
                     `;
+                }
+                const bottomLeftLink = document.querySelector('.bottom-left-link a');
+                if (bottomLeftLink) {
+                    bottomLeftLink.textContent = 'Discover our programming language';
                 }
             }
         });
     </script>
 </body>
 </html>
-
