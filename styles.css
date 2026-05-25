@@ -13,10 +13,17 @@ body {
     display: flex;
     flex-direction: column;
     overflow-x: hidden;
+    transition: background 0.3s ease;
 }
 
+/* Motyw kosmiczny */
 body.space-theme {
     background: linear-gradient(135deg, #000000 0%, #000022 100%);
+}
+
+/* Motyw cyber */
+body.cyber-theme {
+    background: linear-gradient(135deg, #0a0f1e 0%, #1a0b2e 100%);
 }
 
 canvas#particles {
@@ -62,11 +69,12 @@ canvas#particles {
     padding: 0.5rem 1rem;
     background: rgba(255, 255, 255, 0.1);
     border-radius: 0.5rem;
-    transition: background 0.2s ease;
+    transition: background 0.2s ease, transform 0.1s ease;
 }
 
 .theme-toggle:hover {
     background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.02);
 }
 
 .main-container {
@@ -86,7 +94,7 @@ canvas#particles {
     border-radius: 9999px;
     padding: 0.5rem;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-    transition: box-shadow 0.2s ease;
+    transition: box-shadow 0.2s ease, background 0.3s ease;
     z-index: 10;
     display: flex;
     align-items: center;
@@ -168,6 +176,17 @@ canvas#particles {
     color: #FFFFFF;
 }
 
+/* Styl dla motywu cyber - linki */
+body.cyber-theme .bottom-left-link a {
+    color: #0ff;
+    text-shadow: 0 0 3px #0ff;
+}
+
+body.cyber-theme .bottom-left-link a:hover {
+    color: #f0f;
+    text-shadow: 0 0 5px #f0f;
+}
+
 footer {
     background: transparent;
     padding: 1rem;
@@ -192,6 +211,14 @@ footer a {
 
 footer a:hover {
     color: #FFFFFF;
+}
+
+body.cyber-theme footer a {
+    color: #0ff;
+}
+
+body.cyber-theme footer a:hover {
+    color: #f0f;
 }
 
 @media (max-width: 600px) {
