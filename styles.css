@@ -26,6 +26,17 @@ body.cyber-theme {
     background: linear-gradient(135deg, #0a0f1e 0%, #1a0b2e 100%);
 }
 
+/* Motyw matrix */
+body.matrix-theme {
+    background: linear-gradient(135deg, #000000 0%, #001a00 100%);
+    color: #00ff66;
+}
+
+/* Motyw sunset */
+body.sunset-theme {
+    background: linear-gradient(135deg, #2b0f1e 0%, #7a2f1f 50%, #c9600f 100%);
+}
+
 canvas#particles {
     position: fixed;
     top: 0;
@@ -77,6 +88,25 @@ canvas#particles {
     transform: scale(1.02);
 }
 
+body.matrix-theme .theme-toggle {
+    color: #00ff66;
+    box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.2) inset;
+}
+
+body.matrix-theme .theme-toggle:hover {
+    background: rgba(0, 255, 102, 0.15);
+    box-shadow: 0 0 8px rgba(0, 255, 102, 0.4);
+}
+
+body.sunset-theme .theme-toggle {
+    color: #ffe4b8;
+}
+
+body.sunset-theme .theme-toggle:hover {
+    background: rgba(255, 179, 71, 0.2);
+    box-shadow: 0 0 8px rgba(255, 179, 71, 0.4);
+}
+
 .main-container {
     min-height: 100vh;
     display: flex;
@@ -104,6 +134,24 @@ canvas#particles {
 .search-container:hover,
 .search-container:focus-within {
     box-shadow: 0 6px 16px rgba(255, 255, 255, 0.1);
+}
+
+body.matrix-theme .search-container {
+    border: 1px solid rgba(0, 255, 102, 0.25);
+}
+
+body.matrix-theme .search-container:hover,
+body.matrix-theme .search-container:focus-within {
+    box-shadow: 0 6px 16px rgba(0, 255, 102, 0.25);
+}
+
+body.sunset-theme .search-container {
+    border: 1px solid rgba(255, 179, 71, 0.25);
+}
+
+body.sunset-theme .search-container:hover,
+body.sunset-theme .search-container:focus-within {
+    box-shadow: 0 6px 16px rgba(255, 179, 71, 0.25);
 }
 
 .search-form {
@@ -187,6 +235,28 @@ body.cyber-theme .bottom-left-link a:hover {
     text-shadow: 0 0 5px #f0f;
 }
 
+/* Styl dla motywu matrix - linki */
+body.matrix-theme .bottom-left-link a {
+    color: #00ff66;
+    text-shadow: 0 0 4px #00ff66;
+}
+
+body.matrix-theme .bottom-left-link a:hover {
+    color: #aaffcc;
+    text-shadow: 0 0 6px #00ff66;
+}
+
+/* Styl dla motywu sunset - linki */
+body.sunset-theme .bottom-left-link a {
+    color: #ffb347;
+    text-shadow: 0 0 4px rgba(255, 140, 0, 0.5);
+}
+
+body.sunset-theme .bottom-left-link a:hover {
+    color: #fff1d6;
+    text-shadow: 0 0 6px rgba(255, 140, 0, 0.7);
+}
+
 footer {
     background: transparent;
     padding: 1rem;
@@ -219,6 +289,32 @@ body.cyber-theme footer a {
 
 body.cyber-theme footer a:hover {
     color: #f0f;
+}
+
+body.matrix-theme footer {
+    color: #00cc55;
+    border-top: 1px solid rgba(0, 255, 102, 0.2);
+}
+
+body.matrix-theme footer a {
+    color: #00ff66;
+}
+
+body.matrix-theme footer a:hover {
+    color: #aaffcc;
+}
+
+body.sunset-theme footer {
+    color: #ffd9ad;
+    border-top: 1px solid rgba(255, 179, 71, 0.25);
+}
+
+body.sunset-theme footer a {
+    color: #ffb347;
+}
+
+body.sunset-theme footer a:hover {
+    color: #fff1d6;
 }
 
 @media (max-width: 600px) {
