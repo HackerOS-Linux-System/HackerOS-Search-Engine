@@ -38,6 +38,37 @@ document.addEventListener('DOMContentLoaded', () => {
                     lineDistance: 120,
                     glowEffect: true
                 };
+            case 'matrix':
+                return {
+                    particleCount: 150,
+                    baseSizeMin: 0.6,
+                    baseSizeMax: 1.8,
+                    speedMin: 0.4,
+                    speedMax: 1.4,
+                    opacityMin: 0.4,
+                    opacityMax: 0.9,
+                    useHue: false,
+                    fixedHue: 120,
+                    connectLines: false,
+                    glowEffect: true,
+                    verticalFall: true
+                };
+            case 'sunset':
+                return {
+                    particleCount: 90,
+                    baseSizeMin: 1,
+                    baseSizeMax: 2.6,
+                    speedMin: -0.18,
+                    speedMax: 0.18,
+                    opacityMin: 0.3,
+                    opacityMax: 0.7,
+                    useHue: true,
+                    hueMin: 10,
+                    hueMax: 45,
+                    connectLines: true,
+                    lineDistance: 110,
+                    glowEffect: true
+                };
             default: // default
                 return {
                     particleCount: 50,
@@ -70,14 +101,24 @@ document.addEventListener('DOMContentLoaded', () => {
             if (themeProps.useHue) {
                 this.hue = Math.random() * (themeProps.hueMax - themeProps.hueMin) + themeProps.hueMin;
             } else {
-                this.hue = 0; // nieużywane dla space
+                this.hue = themeProps.fixedHue || 0; // np. zielony dla matrix, biały dla space
             }
             this.glow = themeProps.glowEffect;
+            if (themeProps.verticalFall) {
+                this.speedX = 0;
+                this.speedY = Math.random() * (themeProps.speedMax - themeProps.speedMin) + themeProps.speedMin;
+            }
         }
 
         update(themeProps, mouse) {
             this.x += this.speedX;
             this.y += this.speedY;
+
+            // Motyw matrix: cząstki spadają i wracają na górę
+            if (themeProps.verticalFall && this.y > canvas.height) {
+                this.y = 0;
+                this.x = Math.random() * canvas.width;
+            }
 
             // Spadek rozmiaru/opacity tylko dla domyślnego motywu
             if (currentTheme === 'default') {
@@ -106,6 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
         draw(ctx) {
             if (this.themeProps.useHue) {
                 ctx.fillStyle = `hsla(${this.hue}, 70%, 60%, ${this.opacity})`;
+            } else if (this.themeProps.fixedHue) {
+                // Dla matrix: zielone cząstki
+                ctx.fillStyle = `hsla(${this.hue}, 90%, 55%, ${this.opacity})`;
             } else {
                 // Dla space: białe cząstki
                 ctx.fillStyle = `hsla(0, 0%, 100%, ${this.opacity})`;
@@ -113,7 +157,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (this.glow) {
                 ctx.shadowBlur = 6;
-                ctx.shadowColor = this.themeProps.useHue ? `hsl(${this.hue}, 80%, 60%)` : 'white';
+                ctx.shadowColor = this.themeProps.useHue
+                    ? `hsl(${this.hue}, 80%, 60%)`
+                    : (this.themeProps.fixedHue ? `hsl(${this.hue}, 90%, 55%)` : 'white');
             } else {
                 ctx.shadowBlur = 0;
             }
@@ -183,15 +229,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Theme Toggle (3 motywy) ---
     const themeToggle = document.getElementById('themeToggle');
-    const themes = ['default', 'space', 'cyber'];
+    const themes = ['default', 'space', 'cyber', 'matrix', 'sunset'];
 
     function applyTheme(theme) {
         currentTheme = theme;
-        document.body.classList.remove('space-theme', 'cyber-theme');
+        document.body.classList.remove('space-theme', 'cyber-theme', 'matrix-theme', 'sunset-theme');
         if (theme === 'space') {
             document.body.classList.add('space-theme');
         } else if (theme === 'cyber') {
             document.body.classList.add('cyber-theme');
+        } else if (theme === 'matrix') {
+            document.body.classList.add('matrix-theme');
+        } else if (theme === 'sunset') {
+            document.body.classList.add('sunset-theme');
         }
         initParticles();
         localStorage.setItem('theme', theme);
