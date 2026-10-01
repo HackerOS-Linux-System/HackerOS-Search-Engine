@@ -1,1 +1,765 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex">
+    <title>HackerOS Search | Offline</title>
+    <link rel="icon" type="image/png" href="HackerOS.png">
+    <!--
+        404.html - strona offline / 404 dla HackerOS Search.
+        Plik jest w pełni samodzielny (CSS + JS inline), żeby działał bez internetu.
+        Wyświetla go Service Worker (sw.js), gdy nie da się załadować strony.
 
+        Podgląd w przeglądarce (bez wyłączania internetu):
+          404.html?offline                  -> wymuszony tryb offline
+          404.html?offline&theme=matrix     -> + wybrany motyw (default|space|cyber|matrix|sunset)
+          404.html?theme=cyber              -> zwykły 404 w motywie cyber
+    -->
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SFMono-Regular', Consolas, 'Courier New', monospace;
+            --bg1: #1E293B; --bg2: #334155;
+            --fg: #F3F4F6; --dim: #9CA3AF;
+            --acc: #60a5fa; --acc2: #a78bfa; --warn: #f87171; --ok: #4ade80;
+            --glow: rgba(96, 165, 250, .45);
+            --scan: .10;
+        }
+        body.space-theme  { --bg1:#000000; --bg2:#000022; --fg:#e8eeff; --dim:#8b97c4; --acc:#9bb8ff; --acc2:#ffffff; --warn:#ff5a5a; --glow:rgba(155,184,255,.5); --scan:.06; }
+        body.cyber-theme  { --bg1:#0a0f1e; --bg2:#1a0b2e; --fg:#e6faff; --dim:#7aa6b8; --acc:#00ffff; --acc2:#ff00ff; --warn:#ff2a6d; --glow:rgba(0,255,255,.5); --scan:.18; }
+        body.matrix-theme { --bg1:#000000; --bg2:#001a00; --fg:#00ff66; --dim:#00a844; --acc:#00ff66; --acc2:#aaffcc; --warn:#ff4d4d; --ok:#aaffcc; --glow:rgba(0,255,102,.55); --scan:.22; }
+        body.sunset-theme { --bg1:#2b0f1e; --bg2:#c9600f; --fg:#ffe4b8; --dim:#d9a77a; --acc:#ffb347; --acc2:#ff5e7e; --warn:#ff4d6d; --glow:rgba(255,179,71,.5); --scan:.14; }
+
+        html, body { min-height: 100%; }
+        body {
+            font-family: var(--mono);
+            color: var(--fg);
+            background: linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            transition: background .3s ease;
+        }
+        body.sunset-theme { background: linear-gradient(135deg, #2b0f1e 0%, #7a2f1f 50%, #c9600f 100%); background-attachment: fixed; }
+
+        canvas#bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -10; pointer-events: none; }
+        body.matrix-theme canvas#bg { opacity: .85; }
+
+        /* --- nakładki: szum, linie skanujące, winieta, "rozdarcia" ekranu --- */
+        canvas#noise { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 40; pointer-events: none; opacity: .06; image-rendering: pixelated; mix-blend-mode: overlay; transition: opacity .1s; }
+        .scan { position: fixed; inset: 0; z-index: 50; pointer-events: none;
+            background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,var(--scan)) 3px); }
+        .scan::after { content: ''; position: absolute; left: 0; right: 0; top: -20vh; height: 18vh;
+            background: linear-gradient(to bottom, transparent, rgba(255,255,255,.05), transparent);
+            animation: roll 7s linear infinite; }
+        .vignette { position: fixed; inset: 0; z-index: 45; pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%); }
+        #tears { position: fixed; inset: 0; z-index: 46; pointer-events: none; overflow: hidden; }
+        .tear { position: absolute; left: 0; width: 100%; display: none; background: var(--acc); mix-blend-mode: screen; opacity: .18; }
+        .tear.alt { background: var(--acc2); }
+        body.burst .tear { display: block; }
+
+        /* --- logo i przełącznik motywu (jak na stronie głównej) --- */
+        .logo { position: fixed; top: 1.5rem; left: 1.5rem; z-index: 1000; display: block; transition: transform .2s ease; }
+        .logo:hover { transform: scale(1.05); }
+        .logo img { height: 2.5rem; width: auto; display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
+        .theme-toggle { position: fixed; top: 1.5rem; right: 1.5rem; z-index: 1000; cursor: pointer; user-select: none;
+            color: var(--fg); font-family: var(--mono); font-size: 1rem; padding: .5rem 1rem;
+            background: rgba(255,255,255,.1); border: 0; border-radius: .5rem; transition: background .2s, transform .1s, box-shadow .2s; }
+        .theme-toggle:hover { background: rgba(255,255,255,.2); transform: scale(1.02); box-shadow: 0 0 10px var(--glow); }
+        .theme-toggle:focus-visible, .btn:focus-visible, .logo:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+
+        /* --- scena --- */
+        .stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 1.25rem; padding: 6rem 1rem 2rem; text-align: center; position: relative; z-index: 1;
+            animation: flicker 6s infinite; }
+
+        .chip { display: inline-flex; align-items: center; gap: .55rem; padding: .35rem .9rem;
+            font-size: .8rem; letter-spacing: .12em; border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+            color: var(--warn); border-radius: 9999px; background: rgba(0,0,0,.35); backdrop-filter: blur(6px); }
+        .chip .dot { width: .55rem; height: .55rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; animation: pulse 1s infinite; }
+        .chip.is-ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+        .chip.is-check { color: var(--acc); border-color: color-mix(in srgb, var(--acc) 55%, transparent); }
+        .chip.is-404 { color: var(--acc2); border-color: color-mix(in srgb, var(--acc2) 55%, transparent); }
+
+        /* --- główny glitch --- */
+        .glitch { position: relative; max-width: 100%; font-size: clamp(1.9rem, 9vw, 5.5rem); font-weight: 900; letter-spacing: .05em;
+            line-height: 1.05; text-transform: uppercase; color: var(--fg); text-shadow: 0 0 22px var(--glow); cursor: pointer; word-break: break-word; }
+        .glitch::before, .glitch::after { content: attr(data-text); position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        .glitch::before { color: var(--acc);  transform: translateX(3px);  text-shadow: -2px 0 var(--acc2); animation: gl1 3.1s infinite linear alternate-reverse; }
+        .glitch::after  { color: var(--acc2); transform: translateX(-3px); text-shadow:  2px 0 var(--acc);  animation: gl2 2.6s infinite linear alternate-reverse; }
+        body.burst .glitch { text-shadow: 0 0 32px var(--acc), 4px 0 var(--acc2), -4px 0 var(--acc); }
+
+        .sub { max-width: 38rem; color: var(--dim); font-size: .95rem; line-height: 1.6; min-height: 3.1em; }
+        .sub b { color: var(--acc); font-weight: 600; }
+
+        /* --- okno terminala --- */
+        .term { width: min(46rem, 94vw); text-align: left; border-radius: .6rem; overflow: hidden;
+            background: rgba(0,0,0,.58); border: 1px solid color-mix(in srgb, var(--acc) 35%, transparent);
+            box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 8px 40px rgba(0,0,0,.5), 0 0 28px color-mix(in srgb, var(--acc) 18%, transparent);
+            backdrop-filter: blur(8px); transition: border-color .1s, box-shadow .1s; }
+        body.burst .term { border-color: var(--warn); box-shadow: 0 0 30px color-mix(in srgb, var(--warn) 45%, transparent); }
+        .term-bar { display: flex; align-items: center; gap: .4rem; padding: .5rem .8rem; font-size: .75rem; color: var(--dim);
+            background: rgba(255,255,255,.05); border-bottom: 1px solid color-mix(in srgb, var(--acc) 20%, transparent); }
+        .term-bar i { width: .6rem; height: .6rem; border-radius: 50%; background: var(--dim); opacity: .5; }
+        .term-bar i:first-child { background: var(--warn); opacity: .9; }
+        .term-bar span { margin-left: .5rem; }
+        .term-body { padding: .8rem 1rem; font-size: .82rem; line-height: 1.5; overflow: hidden; }
+        .term-body div { min-height: 1.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .term-body .cmd { color: var(--fg); }
+        .term-body .dim { color: var(--dim); }
+        .term-body .ok { color: var(--ok); }
+        .term-body .fail { color: var(--warn); }
+        .term-body .acc { color: var(--acc); text-shadow: 0 0 8px var(--glow); }
+        .term-body div:last-child::after { content: '\2588'; margin-left: 2px; color: var(--acc); animation: blink 1s steps(1) infinite; }
+        .term-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .55rem 1rem;
+            font-size: .75rem; color: var(--dim); border-top: 1px solid color-mix(in srgb, var(--acc) 20%, transparent); }
+
+        .bars { display: inline-flex; align-items: flex-end; gap: 3px; height: 1rem; }
+        .bars b { width: 4px; background: var(--warn); opacity: .25; border-radius: 1px; animation: bar 1.6s infinite; }
+        .bars b:nth-child(1) { height: 25%; animation-delay: 0s; }
+        .bars b:nth-child(2) { height: 45%; animation-delay: .15s; }
+        .bars b:nth-child(3) { height: 65%; animation-delay: .3s; }
+        .bars b:nth-child(4) { height: 82%; animation-delay: .45s; }
+        .bars b:nth-child(5) { height: 100%; animation-delay: .6s; }
+        .bars.is-ok b { background: var(--ok); opacity: 1; animation: none; }
+
+        /* --- przyciski --- */
+        .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .8rem; }
+        .btn { font-family: var(--mono); font-size: .9rem; color: var(--acc); text-decoration: none; cursor: pointer;
+            padding: .65rem 1.3rem; border-radius: .5rem; background: rgba(0,0,0,.35); border: 1px solid color-mix(in srgb, var(--acc) 55%, transparent);
+            transition: background .2s, box-shadow .2s, transform .1s, color .2s; }
+        .btn:hover { background: color-mix(in srgb, var(--acc) 18%, transparent); box-shadow: 0 0 14px var(--glow); color: var(--fg); transform: translateY(-1px); animation: btnglitch .3s steps(2) 1; }
+        .btn[hidden] { display: none; }
+
+        footer { position: relative; z-index: 1; padding: 1rem; text-align: center; font-size: .8rem; color: var(--dim); border-top: 1px solid rgba(255,255,255,.1); }
+        footer a { color: var(--acc); text-decoration: none; }
+        footer a:hover { color: var(--fg); }
+
+        /* --- animacje --- */
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes pulse { 50% { opacity: .35; } }
+        @keyframes bar { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+        @keyframes roll { to { transform: translateY(140vh); } }
+        @keyframes flicker { 0%, 90%, 100% { opacity: 1; } 91% { opacity: .82; } 92% { opacity: 1; } 95% { opacity: .9; } 96% { opacity: 1; } }
+        @keyframes shake {
+            0% { transform: translate(0,0); } 25% { transform: translate(-4px,1px) skewX(2deg); }
+            50% { transform: translate(5px,-1px); } 75% { transform: translate(-3px,2px) skewX(-2deg); } 100% { transform: translate(0,0); }
+        }
+        body.burst .stage { animation: shake .12s steps(2) infinite; }
+        @keyframes btnglitch { 0% { text-shadow: 2px 0 var(--acc2), -2px 0 var(--acc); } 100% { text-shadow: none; } }
+        @keyframes gl1 {
+            0% { clip-path: inset(8% 0 82% 0); } 8% { clip-path: inset(62% 0 12% 0); } 16% { clip-path: inset(30% 0 48% 0); }
+            24% { clip-path: inset(78% 0 4% 0); } 32% { clip-path: inset(0 0 94% 0); } 40% { clip-path: inset(44% 0 38% 0); }
+            52% { clip-path: inset(88% 0 2% 0); } 64% { clip-path: inset(18% 0 66% 0); } 76% { clip-path: inset(54% 0 28% 0); }
+            88% { clip-path: inset(2% 0 90% 0); } 100% { clip-path: inset(70% 0 14% 0); }
+        }
+        @keyframes gl2 {
+            0% { clip-path: inset(72% 0 10% 0); } 10% { clip-path: inset(14% 0 74% 0); } 20% { clip-path: inset(50% 0 30% 0); }
+            30% { clip-path: inset(4% 0 88% 0); } 42% { clip-path: inset(84% 0 6% 0); } 55% { clip-path: inset(26% 0 52% 0); }
+            66% { clip-path: inset(66% 0 20% 0); } 78% { clip-path: inset(36% 0 44% 0); } 90% { clip-path: inset(92% 0 0 0); }
+            100% { clip-path: inset(10% 0 78% 0); }
+        }
+
+        /* --- akcenty zależne od motywu --- */
+        body.matrix-theme .term { box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 34px rgba(0,255,102,.22); }
+        body.matrix-theme .glitch::before, body.matrix-theme .glitch::after { mix-blend-mode: screen; }
+        body.cyber-theme .glitch { letter-spacing: .09em; }
+        body.cyber-theme .term { clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); border-radius: 0; }
+        body.sunset-theme .glitch { text-shadow: 0 0 24px rgba(255,140,0,.6), 0 3px 0 rgba(255,94,126,.5); }
+        body.sunset-theme .scan::after { height: 26vh; background: linear-gradient(to bottom, transparent, rgba(255,255,255,.09), transparent); animation-duration: 5s; }
+        body.space-theme .glitch { letter-spacing: .12em; font-weight: 700; }
+
+        @media (max-width: 600px) {
+            .logo { top: 1rem; left: 1rem; } .logo img { height: 2rem; }
+            .theme-toggle { top: 1rem; right: 1rem; font-size: .875rem; padding: .375rem .75rem; }
+            .stage { padding-top: 5rem; gap: 1rem; }
+            .term-body { font-size: .72rem; padding: .6rem .75rem; }
+            .sub { font-size: .85rem; }
+            footer { font-size: .72rem; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition: none !important; }
+            .scan::after { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="bg" aria-hidden="true"></canvas>
+    <canvas id="noise" aria-hidden="true"></canvas>
+    <div id="tears" aria-hidden="true"></div>
+    <div class="vignette" aria-hidden="true"></div>
+    <div class="scan" aria-hidden="true"></div>
+
+    <a class="logo" id="logo" href="index.html" aria-label="HackerOS Search">
+        <img src="HackerOS.png" alt="HackerOS Logo" onerror="this.parentNode.style.display='none'">
+    </a>
+    <button type="button" class="theme-toggle" id="themeToggle">Change</button>
+
+    <main class="stage">
+        <div class="chip is-check" id="chip" role="status" aria-live="polite"><span class="dot"></span><span id="chipText">...</span></div>
+        <h1 class="glitch" id="title" data-text="OFFLINE" title="glitch!">OFFLINE</h1>
+        <p class="sub" id="sub">Brak połączenia z internetem.</p>
+
+        <section class="term" aria-label="Terminal diagnostyczny">
+            <div class="term-bar"><i></i><i></i><i></i><span id="termTitle">root@hackeros: ~/network</span></div>
+            <div class="term-body" id="term" aria-hidden="true"></div>
+            <div class="term-foot">
+                <span class="bars" id="bars" aria-hidden="true"><b></b><b></b><b></b><b></b><b></b></span>
+                <span id="statusText"></span>
+            </div>
+        </section>
+
+        <div class="actions">
+            <button type="button" class="btn" id="retry">Spróbuj ponownie</button>
+            <a class="btn" id="homeBtn" href="index.html" hidden>Strona główna</a>
+        </div>
+        <noscript><p class="sub">Brak połączenia z internetem. Sprawdź kabel, Wi-Fi lub router i odśwież stronę.</p></noscript>
+    </main>
+
+    <footer>
+        <a href="https://hackeros-linux-system.github.io/HackerOS-Website/" target="_blank" rel="noopener">HackerOS</a> Search | © 2026
+    </footer>
+
+<script>
+(() => {
+    'use strict';
+
+    const $ = (id) => document.getElementById(id);
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const rnd = (a, b) => Math.random() * (b - a) + a;
+    const pick = (arr) => arr[(Math.random() * arr.length) | 0];
+
+    const THEMES = ['default', 'space', 'cyber', 'matrix', 'sunset'];
+    const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const lang = (navigator.language || 'en').toLowerCase().startsWith('pl') ? 'pl' : 'en';
+    const params = new URLSearchParams(location.search);
+    const forcedOffline = params.has('offline');
+
+    let theme = 'default';
+    try { theme = localStorage.getItem('theme') || 'default'; } catch (e) {}
+    if (params.get('theme') && THEMES.includes(params.get('theme'))) theme = params.get('theme');
+    if (!THEMES.includes(theme)) theme = 'default';
+
+    /* ------------------------------------------------------------------ teksty */
+    const TXT = {
+        pl: {
+            titles: {
+                offline: { default: 'Offline', space: 'Utrata sygnału', cyber: 'Łącze zerwane', matrix: 'Rozłączono', sunset: 'Brak sygnału' },
+                notfound: '404'
+            },
+            sub: {
+                offline: {
+                    default: 'Brak połączenia z internetem. Sprawdź <b>kabel, Wi-Fi lub router</b> - wrócimy, gdy tylko sieć znów zadziała.',
+                    space: 'Houston, mamy problem. <b>Łączność z Ziemią</b> została przerwana. Wracamy na orbitę, gdy sygnał się odnajdzie.',
+                    cyber: 'Uplink zerwany przez nieznany proces. <b>ICE</b> odcięło Twoje łącze. Trwa próba odzyskania dostępu...',
+                    matrix: 'Obudź się... Matrix stracił z Tobą kontakt. <b>Podążaj za białym królikiem</b> - czyli sprawdź kabel.',
+                    sunset: 'Śledzenie taśmy zgubione. <b>Sprawdź kabel</b> albo dmuchnij w kasetę i poczekaj na sygnał.'
+                },
+                notfound: 'Sieć działa, ale tej strony tu nie ma. <b>Ścieżka</b> nie istnieje albo została przeniesiona.'
+            },
+            chip: { check: 'SKANOWANIE SIECI', offline: 'OFFLINE', notfound: 'BŁĄD 404', ok: 'ONLINE' },
+            retry: 'Spróbuj ponownie', home: 'Strona główna',
+            retryIn: (s) => `kolejna próba za ${s}s`, trying: 'łączenie...', connected: 'połączono', idle: 'sieć dostępna',
+            attempt: 'próba połączenia', failed: 'NIEUDANA', okWord: 'OK',
+            restored: '[  OK  ] łącze przywrócone - wracam do wyszukiwarki...',
+            docTitle: { offline: 'HackerOS Search | Offline', notfound: 'HackerOS Search | 404' }
+        },
+        en: {
+            titles: {
+                offline: { default: 'Offline', space: 'Signal lost', cyber: 'Link severed', matrix: 'Disconnected', sunset: 'No signal' },
+                notfound: '404'
+            },
+            sub: {
+                offline: {
+                    default: 'No internet connection. Check your <b>cable, Wi-Fi or router</b> - we will be back as soon as the network is.',
+                    space: 'Houston, we have a problem. The <b>link to Earth</b> is down. We will re-enter orbit once the signal returns.',
+                    cyber: 'Uplink cut by an unknown process. <b>ICE</b> severed your connection. Attempting to regain access...',
+                    matrix: 'Wake up... the Matrix has lost you. <b>Follow the white rabbit</b> - or just check your cable.',
+                    sunset: 'Tracking lost. <b>Check the cable</b> or blow on the cartridge and wait for the signal.'
+                },
+                notfound: 'The network is fine, but this page is not here. The <b>path</b> does not exist or has moved.'
+            },
+            chip: { check: 'SCANNING NETWORK', offline: 'OFFLINE', notfound: 'ERROR 404', ok: 'ONLINE' },
+            retry: 'Try again', home: 'Home',
+            retryIn: (s) => `next attempt in ${s}s`, trying: 'connecting...', connected: 'connected', idle: 'network reachable',
+            attempt: 'reconnect attempt', failed: 'FAILED', okWord: 'OK',
+            restored: '[  OK  ] link restored - heading back to the search engine...',
+            docTitle: { offline: 'HackerOS Search | Offline', notfound: 'HackerOS Search | 404' }
+        }
+    }[lang];
+
+    /* ------------------------------------------------------------------ elementy */
+    const bg = $('bg'), c = bg.getContext('2d');
+    const nz = $('noise'), nc = nz.getContext('2d');
+    const titleEl = $('title'), subEl = $('sub'), chipEl = $('chip'), chipText = $('chipText');
+    const termEl = $('term'), statusEl = $('statusText'), barsEl = $('bars');
+    const retryBtn = $('retry'), homeBtn = $('homeBtn');
+    const tearsEl = $('tears');
+
+    const MAXL = innerWidth < 600 ? 11 : 13;
+    termEl.style.height = (MAXL * 1.5) + 'em';
+    document.documentElement.lang = lang;
+
+    /* ------------------------------------------------------------------ stan */
+    let mode = 'check';       // check | offline | notfound | restored
+    let attempt = 0, countdown = 3, busy = false, booted = false, loopTimer = null, runId = 0;
+
+    /* ------------------------------------------------------------------ ścieżka do strony głównej */
+    function homeUrl() {
+        try { const r = localStorage.getItem('hackeros_root'); if (r) return r; } catch (e) {}
+        const seg = location.pathname.split('/').filter(Boolean)[0];
+        if (location.hostname.endsWith('.github.io') && seg && !seg.endsWith('.html')) return location.origin + '/' + seg + '/';
+        return location.pathname.endsWith('404.html') ? 'index.html' : location.origin + '/';
+    }
+
+    /* ------------------------------------------------------------------ test łączności */
+    async function probe() {
+        if (forcedOffline) return false;
+        if (!navigator.onLine) return false;
+        if (location.protocol === 'file:') return true;
+        const ctl = new AbortController();
+        const to = setTimeout(() => ctl.abort(), 3500);
+        try {
+            // parametr "probe" jest pomijany przez Service Worker -> zapytanie idzie prawdziwie do sieci
+            await fetch(location.pathname + '?probe=' + Date.now(), { method: 'HEAD', cache: 'no-store', signal: ctl.signal });
+            return true;
+        } catch (e) { return false; }
+        finally { clearTimeout(to); }
+    }
+
+    /* ------------------------------------------------------------------ tytuł: scramble */
+    const GLYPHS = '!<>-_\\/[]{}=+*^?#01ｱｲｳｴｶｷ';
+    let scrToken = 0;
+    function setTitle(t) { titleEl.textContent = t; titleEl.setAttribute('data-text', t); }
+    function scramble(final, dur = 480) {
+        const token = ++scrToken;
+        if (reduce) { setTitle(final); return; }
+        const t0 = performance.now();
+        (function step() {
+            if (token !== scrToken) return;
+            const p = (performance.now() - t0) / dur;
+            if (p >= 1) { setTitle(final); return; }
+            let out = '';
+            for (let i = 0; i < final.length; i++) out += (final[i] === ' ' || Math.random() < p) ? final[i] : pick(GLYPHS);
+            setTitle(out);
+            requestAnimationFrame(step);
+        })();
+    }
+    function currentTitle() {
+        return mode === 'notfound' ? TXT.titles.notfound : (mode === 'restored' ? TXT.chip.ok : TXT.titles.offline[theme]);
+    }
+
+    /* ------------------------------------------------------------------ terminal */
+    function addLine(cls, text = '') {
+        const d = document.createElement('div');
+        d.className = cls; d.textContent = text;
+        termEl.appendChild(d);
+        while (termEl.children.length > MAXL) termEl.removeChild(termEl.firstChild);
+        return d;
+    }
+
+    function buildScript() {
+        const P = 'root@hackeros:~# ';
+        const L = [];
+        const flavor = {
+            default: [['acc', '> ' + (lang === 'pl' ? 'sprawdź kabel / Wi-Fi / router' : 'check cable / Wi-Fi / router')]],
+            space:   [['acc', '> Houston, we have a problem.'], ['dim', '> deep-space link: carrier lost']],
+            cyber:   [['acc', '> ICE intrusion detected'], ['fail', '> uplink severed by pid 1337 (unknown)']],
+            matrix:  [['acc', '> Wake up, Neo...'], ['acc', '> The Matrix has you...'], ['acc', '> Follow the white rabbit.']],
+            sunset:  [['acc', '> VCR: TRACKING ERROR  CH 03'], ['dim', '> insert tape / adjust antenna']]
+        }[theme];
+
+        if (mode === 'offline') {
+            L.push({ cls: 'cmd', prompt: P, text: 'ip link show wlan0', wait: 220 });
+            L.push({ cls: 'dim', text: '2: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> state DOWN', wait: 160 });
+            L.push({ cls: 'cmd', prompt: P, text: 'ping -c 3 1.1.1.1', wait: 220 });
+            L.push({ cls: 'fail', text: 'ping: connect: Network is unreachable', wait: 160 });
+            L.push({ cls: 'cmd', prompt: P, text: 'nslookup ecosia.org', wait: 220 });
+            L.push({ cls: 'fail', text: ';; connection timed out; no servers could be reached', wait: 200 });
+            L.push({ cls: 'fail', text: '[ FAIL ] uplink lost (no carrier)', wait: 220 });
+            flavor.forEach(([cls, text]) => L.push({ cls, text, wait: 260, type: true }));
+            L.push({ cls: 'dim', text: '[ .... ] auto-reconnect: enabled', wait: 150 });
+        } else {
+            L.push({ cls: 'cmd', prompt: P, text: 'curl -I ' + location.pathname, wait: 220 });
+            L.push({ cls: 'fail', text: 'HTTP/1.1 404 Not Found', wait: 160 });
+            L.push({ cls: 'dim', text: 'x-hackeros: path not found in the matrix', wait: 160 });
+            L.push({ cls: 'ok', text: '[  OK  ] network reachable', wait: 200 });
+            flavor.forEach(([cls, text]) => L.push({ cls, text, wait: 240, type: true }));
+            L.push({ cls: 'dim', text: lang === 'pl' ? '> tej strony po prostu tu nie ma.' : '> this page simply is not here.', wait: 150 });
+        }
+        return L;
+    }
+
+    async function play() {
+        const id = ++runId;
+        booted = false;
+        termEl.innerHTML = '';
+        for (const l of buildScript()) {
+            if (id !== runId) return;
+            const el = addLine(l.cls);
+            const full = (l.prompt || '') + l.text;
+            if ((l.prompt || l.type) && !reduce) {
+                el.textContent = l.prompt || '';
+                for (const ch of l.text) {
+                    el.textContent += ch;
+                    await sleep(rnd(14, 38));
+                    if (id !== runId) return;
+                }
+            } else {
+                el.textContent = full;
+            }
+            await sleep(reduce ? 0 : l.wait);
+        }
+        if (id === runId) booted = true;
+    }
+
+    function noiseLine() {
+        const hex = () => '0x' + ((Math.random() * 0xffff) | 0).toString(16).toUpperCase().padStart(4, '0');
+        addLine('fail', pick([
+            `[ ERR  ] packet ${hex()} dropped (seq=${(Math.random() * 999) | 0})`,
+            `[ ERR  ] arp: who-has 192.168.0.1 timeout`,
+            `[ WARN ] dhcp: no lease, rebind failed`,
+            `[ ERR  ] dns: SERVFAIL ${hex()}`
+        ]));
+    }
+
+    /* ------------------------------------------------------------------ render stanu */
+    function render() {
+        const key = mode === 'notfound' ? 'notfound' : 'offline';
+        subEl.innerHTML = mode === 'notfound' ? TXT.sub.notfound : TXT.sub.offline[theme];
+        chipEl.className = 'chip ' + (mode === 'notfound' ? 'is-404' : (mode === 'check' ? 'is-check' : (mode === 'restored' ? 'is-ok' : '')));
+        chipText.textContent = mode === 'check' ? TXT.chip.check : (mode === 'restored' ? TXT.chip.ok : TXT.chip[mode]);
+        barsEl.className = 'bars' + (mode === 'notfound' || mode === 'restored' ? ' is-ok' : '');
+        retryBtn.textContent = TXT.retry;
+        homeBtn.textContent = TXT.home;
+        homeBtn.href = homeUrl();
+        homeBtn.hidden = mode !== 'notfound';
+        retryBtn.hidden = mode !== 'offline';
+        statusEl.textContent = mode === 'notfound' ? TXT.idle : (mode === 'restored' ? TXT.connected : TXT.retryIn(countdown));
+        if (mode !== 'check') document.title = TXT.docTitle[key];
+        scramble(currentTitle());
+    }
+
+    /* ------------------------------------------------------------------ pętla ponownych prób */
+    function startLoop() {
+        clearInterval(loopTimer);
+        countdown = 3;
+        loopTimer = setInterval(() => {
+            if (mode !== 'offline' || busy || !booted) return;
+            countdown--;
+            if (countdown <= 0) { reconnect(); return; }
+            statusEl.textContent = TXT.retryIn(countdown);
+            if (Math.random() < 0.4) noiseLine();
+        }, 1000);
+    }
+
+    async function reconnect() {
+        if (busy || mode !== 'offline') return;
+        busy = true;
+        attempt++;
+        statusEl.textContent = TXT.trying;
+        const el = addLine('dim', `[ .... ] ${TXT.attempt} #${attempt} ...`);
+        let ok;
+        if (forcedOffline) { await sleep(700); ok = false; } else { ok = await probe(); }
+        if (ok) {
+            el.className = 'ok';
+            el.textContent = `[  OK  ] ${TXT.attempt} #${attempt} ... ${TXT.okWord}`;
+            busy = false;
+            restored();
+            return;
+        }
+        el.className = 'fail';
+        el.textContent = `[ FAIL ] ${TXT.attempt} #${attempt} ... ${TXT.failed}`;
+        countdown = 3;
+        statusEl.textContent = TXT.retryIn(countdown);
+        busy = false;
+        burst(180);
+    }
+
+    function restored() {
+        mode = 'restored';
+        clearInterval(loopTimer);
+        addLine('ok', TXT.restored);
+        render();
+        burst(700);
+        setTimeout(() => {
+            if (/404\.html$/.test(location.pathname)) location.replace(homeUrl());
+            else location.reload();
+        }, 1600);
+    }
+
+    /* ------------------------------------------------------------------ motyw */
+    function applyTheme(t, save = true) {
+        theme = t;
+        document.body.classList.remove('space-theme', 'cyber-theme', 'matrix-theme', 'sunset-theme');
+        if (t !== 'default') document.body.classList.add(t + '-theme');
+        if (save) { try { localStorage.setItem('theme', t); } catch (e) {} }
+        initScene();
+        c.clearRect(0, 0, bg.width, bg.height);
+    }
+
+    $('themeToggle').addEventListener('click', () => {
+        applyTheme(THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]);
+        render();
+        if (mode !== 'check') { play().then(() => { if (mode === 'offline') startLoop(); }); }
+        burst(320);
+    });
+
+    /* ------------------------------------------------------------------ tło (canvas) */
+    let W = 0, H = 0, DPR = 1, scene = {}, last = 0, bursting = false;
+    const MCH = 'ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789:.=*+-<>';
+
+    function resize() {
+        DPR = Math.min(window.devicePixelRatio || 1, 2);
+        W = innerWidth; H = innerHeight;
+        bg.width = W * DPR; bg.height = H * DPR;
+        c.setTransform(DPR, 0, 0, DPR, 0, 0);
+        initScene();
+    }
+
+    function makeParticles(n, hMin, hMax, speed) {
+        return Array.from({ length: n }, () => ({
+            x: rnd(0, W), y: rnd(0, H), vx: rnd(-speed, speed), vy: rnd(-speed, speed),
+            r: rnd(1, 2.4), h: rnd(hMin, hMax)
+        }));
+    }
+
+    function initScene() {
+        scene = {};
+        if (theme === 'matrix') {
+            scene.fs = 16;
+            scene.drops = Array.from({ length: Math.ceil(W / 16) }, () => rnd(-40, 0));
+            scene.acc = 0;
+        } else if (theme === 'space') {
+            scene.stars = Array.from({ length: Math.min(280, Math.floor(W * H / 5500)) }, () => {
+                const r = rnd(0.3, 1.5);
+                return { x: rnd(0, W), y: rnd(0, H), r, p: rnd(0, 6.28), s: rnd(0.4, 1.6), v: 0.01 + r * 0.02 };
+            });
+            scene.shoot = null;
+        } else if (theme === 'cyber') {
+            scene.off = 0;
+            scene.parts = makeParticles(40, 170, 310, 0.25);
+        } else if (theme === 'sunset') {
+            scene.parts = makeParticles(45, 10, 45, 0.18);
+        } else {
+            scene.parts = makeParticles(55, 200, 230, 0.15);
+        }
+    }
+
+    function drawParticles(links, dist) {
+        const ps = scene.parts;
+        for (const p of ps) {
+            p.x += p.vx; p.y += p.vy;
+            if (p.x < 0 || p.x > W) p.vx *= -1;
+            if (p.y < 0 || p.y > H) p.vy *= -1;
+            c.fillStyle = `hsla(${p.h},70%,60%,.55)`;
+            c.beginPath(); c.arc(p.x, p.y, p.r, 0, 6.2832); c.fill();
+        }
+        if (!links) return;
+        c.lineWidth = 0.5;
+        for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) {
+            const dx = ps[i].x - ps[j].x, dy = ps[i].y - ps[j].y, d = Math.hypot(dx, dy);
+            if (d < dist) {
+                c.strokeStyle = `hsla(${ps[i].h},70%,60%,${(1 - d / dist) * 0.25})`;
+                c.beginPath(); c.moveTo(ps[i].x, ps[i].y); c.lineTo(ps[j].x, ps[j].y); c.stroke();
+            }
+        }
+    }
+
+    const DRAW = {
+        default() { c.clearRect(0, 0, W, H); drawParticles(true, 110); },
+
+        space(t, dt) {
+            c.clearRect(0, 0, W, H);
+            for (const s of scene.stars) {
+                s.x -= s.v * dt * 0.06 * 16; if (s.x < 0) { s.x = W; s.y = rnd(0, H); }
+                const a = 0.35 + 0.65 * Math.abs(Math.sin(t * 0.001 * s.s + s.p));
+                c.fillStyle = `rgba(255,255,255,${a})`;
+                c.beginPath(); c.arc(s.x, s.y, s.r, 0, 6.2832); c.fill();
+            }
+            if (!scene.shoot && Math.random() < 0.006) scene.shoot = { x: rnd(W * 0.4, W), y: rnd(0, H * 0.4), l: rnd(80, 160), life: 1 };
+            const sh = scene.shoot;
+            if (sh) {
+                const g = c.createLinearGradient(sh.x, sh.y, sh.x + sh.l, sh.y - sh.l * 0.5);
+                g.addColorStop(0, `rgba(255,255,255,${sh.life})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+                c.strokeStyle = g; c.lineWidth = 1.6;
+                c.beginPath(); c.moveTo(sh.x, sh.y); c.lineTo(sh.x + sh.l, sh.y - sh.l * 0.5); c.stroke();
+                sh.x -= 14; sh.y += 7; sh.life -= 0.02;
+                if (sh.life <= 0) scene.shoot = null;
+            }
+        },
+
+        cyber(t, dt) {
+            c.clearRect(0, 0, W, H);
+            const hy = H * 0.58;
+            const sky = c.createLinearGradient(0, hy - 120, 0, hy);
+            sky.addColorStop(0, 'rgba(255,0,255,0)'); sky.addColorStop(1, 'rgba(255,0,255,.14)');
+            c.fillStyle = sky; c.fillRect(0, hy - 120, W, 120);
+            scene.off = (scene.off + dt * 0.00035) % 1;
+            c.lineWidth = 1;
+            const rows = 14;
+            for (let k = 0; k < rows; k++) {
+                const f = ((k + scene.off) / rows), y = hy + (H - hy) * f * f;
+                c.strokeStyle = `rgba(255,0,255,${0.08 + f * 0.4})`;
+                c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
+            }
+            const cols = 18;
+            for (let i = -cols; i <= cols; i++) {
+                c.strokeStyle = `rgba(0,255,255,${0.12 + (1 - Math.abs(i) / cols) * 0.25})`;
+                c.beginPath(); c.moveTo(W / 2 + i * 14, hy); c.lineTo(W / 2 + i * (W / cols) * 0.9, H); c.stroke();
+            }
+            c.strokeStyle = 'rgba(0,255,255,.7)'; c.lineWidth = 1.5;
+            c.beginPath(); c.moveTo(0, hy); c.lineTo(W, hy); c.stroke();
+            drawParticles(true, 120);
+        },
+
+        matrix(t, dt) {
+            scene.acc += dt;
+            if (scene.acc < 55) return;
+            scene.acc = 0;
+            c.globalCompositeOperation = 'destination-out';
+            c.fillStyle = 'rgba(0,0,0,.10)'; c.fillRect(0, 0, W, H);
+            c.globalCompositeOperation = 'source-over';
+            c.font = scene.fs + 'px monospace';
+            const d = scene.drops;
+            for (let i = 0; i < d.length; i++) {
+                const x = i * scene.fs, y = d[i] * scene.fs;
+                if (y > 0) {
+                    c.fillStyle = 'rgba(0,255,102,.85)';
+                    c.fillText(pick(MCH), x, y - scene.fs);
+                    c.fillStyle = '#d6ffe6';
+                    c.fillText(pick(MCH), x, y);
+                }
+                if (y > H && Math.random() > 0.975) d[i] = 0;
+                d[i]++;
+            }
+        },
+
+        sunset(t) {
+            c.clearRect(0, 0, W, H);
+            const r = Math.min(W, H) * 0.2, cx = W / 2, cy = H * 0.7;
+            const g = c.createLinearGradient(0, cy - r, 0, cy + r);
+            g.addColorStop(0, 'rgba(255,214,107,.75)'); g.addColorStop(1, 'rgba(255,77,141,.75)');
+            c.fillStyle = g; c.beginPath(); c.arc(cx, cy, r, 0, 6.2832); c.fill();
+            c.globalCompositeOperation = 'destination-out';
+            const sp = r * 0.2, shift = (t * 0.012) % sp;
+            for (let j = 0; j < 9; j++) {
+                const y = cy + r * 0.05 + j * sp - shift + sp, h = 2 + j * 1.6;
+                if (y > cy && y < cy + r) c.fillRect(cx - r, y, r * 2, h);
+            }
+            c.globalCompositeOperation = 'source-over';
+            for (let k = 0; k < 2; k++) {
+                const y = ((t * 0.05 + k * H * 0.5) % (H + 60)) - 30;
+                const b = c.createLinearGradient(0, y, 0, y + 30);
+                b.addColorStop(0, 'rgba(255,255,255,0)'); b.addColorStop(.5, 'rgba(255,255,255,.07)'); b.addColorStop(1, 'rgba(255,255,255,0)');
+                c.fillStyle = b; c.fillRect(0, y, W, 30);
+            }
+            drawParticles(true, 100);
+        }
+    };
+
+    /* przesunięte "paski" obrazu - efekt datamoshingu w trakcie glitcha */
+    function sliceGlitch() {
+        c.save();
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        const n = 3 + ((Math.random() * 4) | 0);
+        for (let i = 0; i < n; i++) {
+            const h = ((10 + Math.random() * 80) * DPR) | 0;
+            const y = (Math.random() * Math.max(1, bg.height - h)) | 0;
+            const dx = ((Math.random() - 0.5) * 140 * DPR) | 0;
+            try { c.drawImage(bg, 0, y, bg.width, h, dx, y, bg.width, h); } catch (e) {}
+        }
+        c.restore();
+    }
+
+    /* szum "TV static" */
+    nz.width = 192; nz.height = 108;
+    const nimg = nc.createImageData(192, 108);
+    let lastNoise = 0;
+    function drawNoise() {
+        const d = nimg.data;
+        for (let i = 0; i < d.length; i += 4) { const v = Math.random() * 255; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; }
+        nc.putImageData(nimg, 0, 0);
+    }
+
+    function frame(t) {
+        requestAnimationFrame(frame);
+        const dt = Math.min(60, t - last || 16); last = t;
+        DRAW[theme](t, dt);
+        if (bursting) sliceGlitch();
+        if (t - lastNoise > 55) { drawNoise(); lastNoise = t; }
+    }
+
+    /* ------------------------------------------------------------------ glitch "burst" */
+    const TEARS = 5;
+    for (let i = 0; i < TEARS; i++) { const d = document.createElement('div'); d.className = 'tear' + (i % 2 ? ' alt' : ''); tearsEl.appendChild(d); }
+
+    function burst(dur) {
+        if (reduce) return;
+        dur = dur || rnd(220, 520);
+        bursting = true;
+        document.body.classList.add('burst');
+        const shuffle = () => {
+            for (const t of tearsEl.children) {
+                t.style.top = rnd(0, 100) + '%';
+                t.style.height = rnd(1, 9) + '%';
+                t.style.transform = `translateX(${rnd(-60, 60)}px)`;
+            }
+        };
+        shuffle();
+        const iv = setInterval(shuffle, 70);
+        if (mode === 'offline' || mode === 'check') scramble(currentTitle(), 300);
+        setTimeout(() => {
+            clearInterval(iv);
+            bursting = false;
+            document.body.classList.remove('burst');
+        }, dur);
+    }
+
+    const BURST_EVERY = { default: [3500, 9000], space: [3000, 8000], cyber: [1500, 4500], matrix: [2500, 6500], sunset: [2000, 5500] };
+    (function schedule() {
+        const [a, b] = BURST_EVERY[theme] || BURST_EVERY.default;
+        setTimeout(() => {
+            burst();
+            if (Math.random() < 0.3) setTimeout(() => burst(160), 420);
+            schedule();
+        }, rnd(a, b));
+    })();
+
+    titleEl.addEventListener('click', () => burst(420));
+    retryBtn.addEventListener('click', () => { countdown = 0; burst(200); reconnect(); });
+    document.addEventListener('keydown', (e) => {
+        if ((e.key === 'r' || e.key === 'R') && !e.ctrlKey && !e.metaKey && mode === 'offline') { burst(200); reconnect(); }
+    });
+
+    /* zdarzenia przeglądarki: gdy sieć zniknie / wróci już po otwarciu strony */
+    window.addEventListener('offline', () => {
+        if (mode === 'offline' || mode === 'restored') return;
+        mode = 'offline'; render(); play().then(() => startLoop()); burst(400);
+    });
+    window.addEventListener('online', () => { if (mode === 'offline') reconnect(); });
+
+    /* ------------------------------------------------------------------ start */
+    async function init() {
+        resize();
+        applyTheme(theme, false);
+        window.addEventListener('resize', resize);
+        render();                       // tryb "check"
+        requestAnimationFrame(frame);
+        const ok = await probe();
+        mode = ok ? 'notfound' : 'offline';
+        render();
+        burst(380);
+        await play();
+        if (mode === 'offline') startLoop();
+    }
+    init();
+})();
+</script>
+</body>
+</html>
