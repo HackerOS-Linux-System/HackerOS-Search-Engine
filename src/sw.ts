@@ -7,7 +7,17 @@ const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE = `hackeros-search-${__BUILD_ID__}`;
 const OFFLINE_PAGE = '404.html';
-const PRECACHE: readonly string[] = ['404.html', 'index.html', 'styles.css', 'script.js', 'HackerOS.png'];
+const PRECACHE: readonly string[] = [
+    '404.html',
+    'index.html',
+    'styles.css',
+    'script.js',
+    'HackerOS.png',
+    'blue.html',
+    'blue.css',
+    'blue.js',
+    'blue-logo.png',
+];
 
 sw.addEventListener('install', (event: ExtendableEvent) => {
     event.waitUntil(
