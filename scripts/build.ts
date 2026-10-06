@@ -44,7 +44,7 @@ if (!template.includes(marker)) throw new Error(`404.html: brak znacznika ${mark
 writeFileSync(resolve(dist, '404.html'), template.replace(marker, () => offlineJs));
 
 // 3) pliki statyczne
-for (const file of ['index.html', 'styles.css', 'HackerOS.png', 'blue.html', 'blue.css', 'blue-logo.png', 'LICENSE']) {
+for (const file of ['index.html', 'styles.css', 'blue.html', 'blue.css', 'LICENSE']) {
     if (existsSync(p(file))) cpSync(p(file), resolve(dist, file));
     else console.warn(`UWAGA: brak pliku ${file} - pomijam`);
 }
