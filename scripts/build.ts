@@ -23,10 +23,10 @@ const common = {
 rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
-// 1) script.ts -> dist/script.js, sw.ts -> dist/sw.js
+// 1) script.ts -> dist/script.js, blue.ts -> dist/blue.js, sw.ts -> dist/sw.js
 await build({
     ...common,
-    entryPoints: { script: p('src/script.ts'), sw: p('src/sw.ts') },
+    entryPoints: { script: p('src/script.ts'), blue: p('src/blue.ts'), sw: p('src/sw.ts') },
     outdir: dist,
     define: { __BUILD_ID__: JSON.stringify(buildId) },
 });
@@ -44,7 +44,7 @@ if (!template.includes(marker)) throw new Error(`404.html: brak znacznika ${mark
 writeFileSync(resolve(dist, '404.html'), template.replace(marker, () => offlineJs));
 
 // 3) pliki statyczne
-for (const file of ['index.html', 'styles.css', 'HackerOS.png', 'LICENSE']) {
+for (const file of ['index.html', 'styles.css', 'HackerOS.png', 'blue.html', 'blue.css', 'blue-logo.png', 'LICENSE']) {
     if (existsSync(p(file))) cpSync(p(file), resolve(dist, file));
     else console.warn(`UWAGA: brak pliku ${file} - pomijam`);
 }
