@@ -12,18 +12,16 @@ const PRECACHE: readonly string[] = [
     'index.html',
     'styles.css',
     'script.js',
-    'HackerOS.png',
     'blue.html',
     'blue.css',
     'blue.js',
-    'blue-logo.png',
 ];
 
 sw.addEventListener('install', (event: ExtendableEvent) => {
     event.waitUntil(
         caches.open(CACHE)
             .then((cache) =>
-                // pojedynczo, żeby brak jednego pliku (np. HackerOS.png) nie blokował instalacji SW
+                // pojedynczo, żeby brak jednego pliku (np. script.js) nie blokował instalacji SW
                 Promise.all(
                     PRECACHE.map((u) =>
                         cache.add(new Request(u, { cache: 'reload' })).catch((err: unknown) => {
