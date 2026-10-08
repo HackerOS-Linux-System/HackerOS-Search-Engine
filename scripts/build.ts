@@ -24,6 +24,7 @@ rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 // 1) script.ts -> dist/script.js, blue.ts -> dist/blue.js, sw.ts -> dist/sw.js
+//    (guard.ts i idle.ts są wspólnymi modułami - esbuild dołącza je do script.js i blue.js)
 await build({
     ...common,
     entryPoints: { script: p('src/script.ts'), blue: p('src/blue.ts'), sw: p('src/sw.ts') },
@@ -31,17 +32,18 @@ await build({
     define: { __BUILD_ID__: JSON.stringify(buildId) },
 });
 
-// 2) offline.ts -> wstawiony INLINE do 404.html (strona musi działać w pełni samodzielnie)
-const offline = await build({
-    ...common,
-    entryPoints: [p('src/offline.ts')],
-    write: false,
-});
-const offlineJs: string = offline.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-const template: string = readFileSync(p('404.html'), 'utf8');
-const marker = '/* @@OFFLINE_JS@@ */';
-if (!template.includes(marker)) throw new Error(`404.html: brak znacznika ${marker}`);
-writeFileSync(resolve(dist, '404.html'), template.replace(marker, () => offlineJs));
+// 2) szablony HTML z kodem wstawianym INLINE (strony muszą działać w pełni samodzielnie, także bez internetu):
+//    - 404.html     <- src/offline.ts      (znacznik @@OFFLINE_JS@@)
+//    - offline.html <- src/offline-page.ts (znacznik @@OFFLINE_PAGE_JS@@)
+async function inlineScript(entry: string, template: string, marker: string, out: string): Promise<void> {
+    const result = await build({ ...common, entryPoints: [p(entry)], write: false });
+    const js: string = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
+    const html: string = readFileSync(p(template), 'utf8');
+    if (!html.includes(marker)) throw new Error(`${template}: brak znacznika ${marker}`);
+    writeFileSync(resolve(dist, out), html.replace(marker, () => js));
+}
+await inlineScript('src/offline.ts', '404.html', '/* @@OFFLINE_JS@@ */', '404.html');
+await inlineScript('src/offline-page.ts', 'offline.html', '/* @@OFFLINE_PAGE_JS@@ */', 'offline.html');
 
 // 3) pliki statyczne
 for (const file of ['index.html', 'styles.css', 'blue.html', 'blue.css', 'LICENSE']) {
