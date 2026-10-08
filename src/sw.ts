@@ -6,8 +6,10 @@ declare const __BUILD_ID__: string;
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE = `hackeros-search-${__BUILD_ID__}`;
-const OFFLINE_PAGE = '404.html';
+const OFFLINE_PAGE = 'offline.html';
+const FALLBACK_PAGE = '404.html';
 const PRECACHE: readonly string[] = [
+    'offline.html',
     '404.html',
     'index.html',
     'styles.css',
@@ -50,19 +52,20 @@ sw.addEventListener('fetch', (event: FetchEvent) => {
     if (url.origin !== sw.location.origin) return;      // zewnętrzne (Ecosia, ikony) - zostawiamy przeglądarce
     if (url.searchParams.has('probe')) return;          // test łączności z 404.html - ma iść prosto do sieci
 
-    // Nawigacja (wejście na stronę): sieć -> a gdy jej brak, ekran offline 404.html
+    // Nawigacja (wejście na stronę): sieć -> a gdy jej brak, dialog offline.html
+    // (który sam pobiera motyw / tryb strony z localStorage). Ostatecznie 404.html, potem prosty tekst.
     if (req.mode === 'navigate') {
         event.respondWith(
-            fetch(req, { cache: 'no-store' }).catch(() =>
-                caches.match(OFFLINE_PAGE).then(
-                    (r) =>
-                        r ??
-                        new Response('Offline', {
-                            status: 503,
-                            headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-                        })
-                )
-            )
+            fetch(req, { cache: 'no-store' }).catch(async () => {
+                return (
+                    (await caches.match(OFFLINE_PAGE)) ??
+                    (await caches.match(FALLBACK_PAGE)) ??
+                    new Response('Offline', {
+                        status: 503,
+                        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+                    })
+                );
+            })
         );
         return;
     }
