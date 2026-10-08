@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="hackeros-offline" content="1">
+    <title>HackerOS Search | Offline</title>
+    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/HackerOS-Linux-System/HackerOS-Website/main/HackerOS.png">
+    <!--
+        offline.html - dialog "brak internetu" dla WSZYSTKICH trybów strony
+        (default, space, cyber, matrix, sunset oraz Blue Edition - blue.html).
+
+        Plik jest w pełni samodzielny (CSS + JS inline), żeby działał bez internetu.
+        Kod JS pochodzi z src/offline-page.ts - podczas builda (scripts/build.ts) jest kompilowany
+        i wstawiany w miejsce znacznika @@OFFLINE_PAGE_JS@@ na dole tego pliku.
+
+        Skąd strona wie, jaki tryb pokazać (bez internetu)? Z localStorage:
+          theme               - wybrany motyw strony głównej
+          hackeros_variant    - "main" albo "blue" (z której strony użytkownik przyszedł)
+          hackeros_root       - adres, do którego wrócimy po odzyskaniu sieci
+          hackeros_last_online- czas ostatniego połączenia
+        Kopia tego pliku jest też trzymana w localStorage (hackeros_offline_html) i w cache Service Workera.
+
+        Podgląd w przeglądarce (bez wyłączania internetu):
+          offline.html?preview                       -> dialog trwale widoczny
+          offline.html?preview&theme=matrix          -> + motyw (default|space|cyber|matrix|sunset)
+          offline.html?preview&variant=blue          -> wersja Blue Edition
+    -->
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            --bg1: #1E293B; --bg2: #334155;
+            --fg: #F3F4F6; --dim: #9CA3AF;
+            --acc: #60a5fa; --acc2: #a78bfa; --ok: #4ade80; --warn: #f87171;
+            --card: rgba(17, 24, 39, .78); --line: rgba(255, 255, 255, .14);
+            --glow: rgba(96, 165, 250, .28);
+            --btn-fg: #0b1220;
+        }
+        body.t-space  { --bg1:#000000; --bg2:#000022; --fg:#e8eeff; --dim:#8b97c4; --acc:#9bb8ff; --acc2:#ffffff; --card:rgba(4,6,24,.78); --line:rgba(155,184,255,.25); --glow:rgba(155,184,255,.3); }
+        body.t-cyber  { --bg1:#0a0f1e; --bg2:#1a0b2e; --fg:#e6faff; --dim:#7aa6b8; --acc:#00ffff; --acc2:#ff00ff; --warn:#ff2a6d; --card:rgba(10,8,30,.82); --line:rgba(0,255,255,.45); --glow:rgba(0,255,255,.3); --font:'JetBrains Mono','Fira Code','Cascadia Code',Consolas,'Courier New',monospace; }
+        body.t-matrix { --bg1:#000000; --bg2:#001a00; --fg:#00ff66; --dim:#00a844; --acc:#00ff66; --acc2:#aaffcc; --ok:#aaffcc; --warn:#ff4d4d; --card:rgba(0,12,4,.84); --line:rgba(0,255,102,.4); --glow:rgba(0,255,102,.3); --btn-fg:#001a09; --font:'JetBrains Mono','Fira Code','Cascadia Code',Consolas,'Courier New',monospace; }
+        body.t-sunset { --bg1:#2b0f1e; --bg2:#c9600f; --fg:#ffe4b8; --dim:#e0b184; --acc:#ffb347; --acc2:#ff5e7e; --warn:#ff4d6d; --card:rgba(43,15,30,.8); --line:rgba(255,179,71,.4); --glow:rgba(255,179,71,.3); --btn-fg:#2b0f1e; }
+        body.t-blue   { --bg1:#03060f; --bg2:#070d1f; --fg:#e6ecfa; --dim:#8a97b8; --acc:#3b8bff; --acc2:#6aa8ff; --card:rgba(10,17,36,.78); --line:#1d2b4f; --glow:rgba(59,139,255,.28); --btn-fg:#fff; }
+
+        html, body { height: 100%; }
+        body {
+            font-family: var(--font);
+            color: var(--fg);
+            background: linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 100%);
+            background-attachment: fixed;
+            overflow: hidden;
+        }
+        body.t-sunset { background: linear-gradient(135deg, #2b0f1e 0%, #7a2f1f 50%, #c9600f 100%); background-attachment: fixed; }
+        body.t-blue {
+            background:
+                radial-gradient(ellipse 60% 38% at 62% 46%, rgba(40, 70, 150, .22), transparent 70%),
+                radial-gradient(ellipse 45% 30% at 30% 68%, rgba(30, 60, 140, .16), transparent 70%),
+                radial-gradient(ellipse 80% 60% at 50% 40%, #070d1f, #03060f 80%);
+        }
+
+        canvas#bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+        .overlay {
+            position: fixed; inset: 0; z-index: 10;
+            display: grid; place-items: center; padding: 20px;
+            background: rgba(0, 0, 0, .28);
+            backdrop-filter: blur(2px);
+        }
+
+        .card {
+            width: min(460px, 100%);
+            padding: 30px 28px 24px;
+            text-align: center;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: 0 22px 60px rgba(0, 0, 0, .55), 0 0 44px var(--glow);
+            backdrop-filter: blur(12px);
+            animation: pop .4s cubic-bezier(.2, .9, .3, 1.15) both;
+        }
+        @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.96); } }
+
+        body.t-cyber .card {
+            border-radius: 3px;
+            clip-path: polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+            box-shadow: none;
+        }
+        body.t-matrix .card { border-radius: 4px; }
+        body.t-matrix h1, body.t-cyber h1 { text-shadow: 0 0 10px var(--glow), 0 0 22px var(--glow); }
+        body.t-cyber h1 { text-transform: uppercase; letter-spacing: .06em; }
+        body.t-sunset .card { background: linear-gradient(160deg, rgba(43,15,30,.86), rgba(122,47,31,.8)); }
+
+        .icon {
+            position: relative; display: grid; place-items: center;
+            width: 78px; height: 78px; margin: 0 auto 16px;
+            border-radius: 50%;
+            color: var(--acc);
+            background: radial-gradient(circle, color-mix(in srgb, var(--acc) 18%, transparent), transparent 70%);
+            border: 1px solid var(--line);
+        }
+        .icon::after {
+            content: ''; position: absolute; inset: -9px; border-radius: 50%;
+            border: 2px solid var(--acc); opacity: 0;
+            animation: ring 2.4s ease-out infinite;
+        }
+        @keyframes ring { 0% { transform: scale(.82); opacity: .55; } 100% { transform: scale(1.25); opacity: 0; } }
+        .icon svg { width: 38px; height: 38px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+        .card.ok .icon { color: var(--ok); }
+        .card.ok .icon::after { border-color: var(--ok); }
+        .card.ok .icon .wifi-off, .card:not(.ok) .icon .wifi-on { display: none; }
+
+        h1 { font-size: clamp(1.55rem, 5.5vw, 2rem); font-weight: 800; line-height: 1.15; margin-bottom: 10px; }
+        p.desc { color: var(--dim); font-size: .96rem; line-height: 1.6; margin-bottom: 18px; }
+        p.desc b { color: var(--fg); font-weight: 700; }
+
+        .status {
+            display: grid; gap: 4px; margin-bottom: 14px;
+            font-size: .82rem; color: var(--dim);
+        }
+        .status strong { color: var(--fg); font-weight: 600; }
+        .bar { height: 3px; margin: 0 auto 20px; width: 100%; border-radius: 2px; background: rgba(255,255,255,.1); overflow: hidden; }
+        .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--acc), var(--acc2)); transition: width 1s linear; }
+        .card.ok .bar i { background: var(--ok); width: 100% !important; }
+
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .btn {
+            font: 700 .95rem/1 var(--font);
+            padding: 12px 22px; border-radius: 10px; border: 0; cursor: pointer;
+            color: var(--btn-fg); background: linear-gradient(135deg, var(--acc), var(--acc2));
+            transition: transform .15s ease, box-shadow .2s ease, opacity .2s;
+        }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--glow); }
+        .btn:disabled { opacity: .55; cursor: progress; transform: none; box-shadow: none; }
+        .btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+        body.t-cyber .btn, body.t-matrix .btn { border-radius: 2px; text-transform: uppercase; letter-spacing: .06em; }
+
+        .hint { margin-top: 18px; font-size: .74rem; color: var(--dim); opacity: .85; line-height: 1.5; }
+        .hint::before { content: '\25CF'; color: var(--ok); margin-right: 6px; font-size: .7em; vertical-align: 1px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .card, .icon::after { animation: none; }
+            .bar i { transition: none; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="bg" aria-hidden="true"></canvas>
+
+    <div class="overlay" id="offlineDialog" role="alertdialog" aria-modal="true" aria-labelledby="dlgTitle" aria-describedby="dlgDesc">
+        <div class="card" id="card">
+            <div class="icon" aria-hidden="true">
+                <svg class="wifi-off" viewBox="0 0 24 24"><path d="M2 2l20 20"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M2 8.8a15 15 0 0 1 4.2-2.6"/><path d="M10.7 5.1A15 15 0 0 1 22 8.8"/><path d="M5 12.9a10 10 0 0 1 5.2-2.7"/><path d="M14 10.3a10 10 0 0 1 5 2.6"/><path d="M12 20h.01"/></svg>
+                <svg class="wifi-on" viewBox="0 0 24 24"><path d="M5 12.9a10 10 0 0 1 14 0"/><path d="M2 8.8a15 15 0 0 1 20 0"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M12 20h.01"/></svg>
+            </div>
+            <h1 id="dlgTitle">Brak internetu</h1>
+            <p class="desc" id="dlgDesc">Brak połączenia z internetem.</p>
+            <div class="status" role="status" aria-live="polite">
+                <span id="statusLine">&nbsp;</span>
+                <span id="lastOnline">&nbsp;</span>
+            </div>
+            <div class="bar" aria-hidden="true"><i id="barFill"></i></div>
+            <div class="actions">
+                <button type="button" class="btn" id="retry">Spróbuj ponownie</button>
+            </div>
+            <p class="hint" id="hint">Ta strona jest zapisana w pamięci przeglądarki i działa bez internetu.</p>
+        </div>
+    </div>
+
+    <noscript><p style="position:fixed;inset:auto 0 20px;text-align:center;color:#ccc;z-index:20">Brak połączenia z internetem. Sprawdź kabel, Wi-Fi lub router i odśwież stronę.</p></noscript>
+
+<script>/* @@OFFLINE_PAGE_JS@@ */</script>
+</body>
+</html>
