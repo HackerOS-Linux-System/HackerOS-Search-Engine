@@ -1,6 +1,9 @@
 export {};
 
-// HackerOS Search - logika strony głównej (cząsteczki, motywy, offline, język)
+import { initOfflineGuard } from './guard';
+import { initIdleEvents } from './idle';
+
+// HackerOS Search - logika strony głównej (cząsteczki, motywy, offline, bezczynność, język)
 
 type Theme = 'default' | 'space' | 'cyber' | 'matrix' | 'sunset';
 
@@ -375,15 +378,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- Tryb offline: ekran 404.html (efekty glitch zależne od wybranego motywu) ---
-    // Zapamiętujemy adres strony głównej, żeby 404.html wiedziało, dokąd wrócić
-    try {
-        localStorage.setItem('hackeros_root', new URL('./', location.href).href);
-    } catch {
-        /* localStorage niedostępny */
-    }
+    // --- Offline: zapis stanu (motyw, adres, kopia ekranu) w localStorage + dialog offline.html ---
+    // Logika we wspólnym module guard.ts (używa go też blue.html).
+    initOfflineGuard('main', new URL('./', location.href).href);
 
-    // Service Worker (sw.js) podstawia 404.html, gdy strona nie może się załadować bez internetu.
+    // --- Zdarzenia bezczynności: 5 min UFO, 10 min strzelec, 15 min samolot ---
+    initIdleEvents();
+
+    // Service Worker (sw.js) podstawia offline.html, gdy strona nie może się załadować bez internetu.
     // Wymaga HTTPS lub localhost.
     const swAllowed =
         location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
@@ -392,53 +394,4 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn('Service Worker registration failed:', err);
         });
     }
-
-    // Internet zniknął, gdy użytkownik już siedzi na stronie głównej.
-    // navigator.onLine bywa mylące (VPN, wirtualne karty), więc najpierw sprawdzamy realne połączenie.
-    let offlineCheckRunning = false;
-    async function goOffline(): Promise<void> {
-        if (offlineCheckRunning) return;
-        offlineCheckRunning = true;
-        try {
-            if (location.protocol !== 'file:') {
-                const ctl = new AbortController();
-                const timer = setTimeout(() => ctl.abort(), 3500);
-                try {
-                    // parametr "probe" jest pomijany przez Service Worker -> zapytanie idzie prawdziwie do sieci
-                    await fetch(`${location.pathname}?probe=${Date.now()}`, {
-                        method: 'HEAD',
-                        cache: 'no-store',
-                        signal: ctl.signal,
-                    });
-                    return; // sieć działa - zostajemy na stronie
-                } catch {
-                    /* brak sieci - lecimy dalej */
-                } finally {
-                    clearTimeout(timer);
-                }
-            }
-            // zabezpieczenie przed pętlą przeładowań
-            const now = Date.now();
-            let lastTry = 0;
-            try {
-                lastTry = Number(sessionStorage.getItem('hackeros_offline_try') || 0);
-                sessionStorage.setItem('hackeros_offline_try', String(now));
-            } catch {
-                /* sessionStorage niedostępny */
-            }
-            if (navigator.serviceWorker?.controller && now - lastTry > 15000) {
-                location.reload(); // Service Worker odpowie ekranem 404.html
-            } else {
-                location.href = '404.html'; // bez Service Workera przechodzimy bezpośrednio
-            }
-        } finally {
-            offlineCheckRunning = false;
-        }
-    }
-    window.addEventListener('offline', () => void goOffline());
-    if (!navigator.onLine) void goOffline();
-    // Wi-Fi bez dostępu do internetu nie wywołuje zdarzenia "offline" - dlatego co 30 s cicho sprawdzamy łączność
-    setInterval(() => {
-        if (!document.hidden) void goOffline();
-    }, 30000);
 });
