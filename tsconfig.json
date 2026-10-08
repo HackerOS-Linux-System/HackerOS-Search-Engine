@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/script.ts", "src/blue.ts", "src/offline.ts"]
+  "include": ["src/script.ts", "src/blue.ts", "src/offline.ts", "src/offline-page.ts", "src/guard.ts", "src/idle.ts"]
 }
