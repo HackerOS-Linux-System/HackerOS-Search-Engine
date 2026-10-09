@@ -1,6 +1,7 @@
 export {};
 
-// Ekran offline / 404 dla HackerOS Search.
+// Ekran offline / 404 dla HackerOS Search - wersja dla ZWYKŁEJ strony (index.html, wszystkie motywy).
+// Blue Edition (blue.html) ma osobny ekran: offline.html / src/offline-page.ts.
 // Kod jest kompilowany i wstawiany INLINE do 404.html (patrz scripts/build.ts),
 // dzięki czemu strona działa w pełni samodzielnie, także bez internetu.
 
@@ -24,6 +25,10 @@ interface Strings {
     okWord: string;
     restored: string;
     docTitle: { offline: string; notfound: string };
+    lastOnline: (when: string, ago: string) => string;
+    lastNever: string;
+    ago: (min: number) => string;
+    justNow: string;
 }
 
 interface ScriptLine {
@@ -87,7 +92,8 @@ interface Scene {
     const reduce: boolean = !!window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const lang: Lang = (navigator.language || 'en').toLowerCase().startsWith('pl') ? 'pl' : 'en';
     const params = new URLSearchParams(location.search);
-    const forcedOffline: boolean = params.has('offline');
+    const forcedOffline: boolean = params.has('offline'); // podgląd: tryb offline na stałe (bez prawdziwego testu sieci)
+    const assumeOffline: boolean = params.has('lost'); // przekierowanie ze strony głównej: zakładamy brak sieci, ale i tak sprawdzamy
 
     let theme: Theme = 'default';
     try {
@@ -128,6 +134,10 @@ interface Scene {
             okWord: 'OK',
             restored: '[  OK  ] łącze przywrócone - wracam do wyszukiwarki...',
             docTitle: { offline: 'HackerOS Search | Offline', notfound: 'HackerOS Search | 404' },
+            lastOnline: (w, a) => `> ostatnio online: ${w} (${a})`,
+            lastNever: '> ostatnie połączenie: brak danych',
+            ago: (m) => `${m} min temu`,
+            justNow: 'przed chwilą',
         },
         en: {
             titles: {
@@ -156,6 +166,10 @@ interface Scene {
             okWord: 'OK',
             restored: '[  OK  ] link restored - heading back to the search engine...',
             docTitle: { offline: 'HackerOS Search | Offline', notfound: 'HackerOS Search | 404' },
+            lastOnline: (w, a) => `> last online: ${w} (${a})`,
+            lastNever: '> last connection: no data',
+            ago: (m) => `${m} min ago`,
+            justNow: 'just now',
         },
     };
     const TXT: Strings = ALL_TXT[lang];
@@ -192,8 +206,8 @@ interface Scene {
     /* ------------------------------------------------------------------ ścieżka do strony głównej */
     function homeUrl(): string {
         try {
-            const r = localStorage.getItem('hackeros_root');
-            if (r) return r;
+            const r = localStorage.getItem('hackeros_root_main') ?? localStorage.getItem('hackeros_root');
+            if (r && !/blue(\.html)?$/.test(r)) return r;
         } catch {
             /* localStorage niedostępny */
         }
@@ -202,6 +216,21 @@ interface Scene {
             return location.origin + '/' + seg + '/';
         }
         return location.pathname.endsWith('404.html') ? 'index.html' : location.origin + '/';
+    }
+
+    /* ------------------------------------------------------------------ ostatnie połączenie (zapisywane przez guard.ts) */
+    function lastOnlineText(): string {
+        let raw: string | null = null;
+        try {
+            raw = localStorage.getItem('hackeros_last_online');
+        } catch {
+            /* localStorage niedostępny */
+        }
+        const ts = raw ? Number(raw) : NaN;
+        if (!Number.isFinite(ts) || ts <= 0) return TXT.lastNever;
+        const when = new Date(ts).toLocaleTimeString(lang === 'pl' ? 'pl-PL' : 'en-US', { hour: '2-digit', minute: '2-digit' });
+        const min = Math.floor((Date.now() - ts) / 60000);
+        return TXT.lastOnline(when, min < 1 ? TXT.justNow : TXT.ago(min));
     }
 
     /* ------------------------------------------------------------------ test łączności */
@@ -283,6 +312,7 @@ interface Scene {
             L.push({ cls: 'cmd', prompt: P, text: 'nslookup ecosia.org', wait: 220 });
             L.push({ cls: 'fail', text: ';; connection timed out; no servers could be reached', wait: 200 });
             L.push({ cls: 'fail', text: '[ FAIL ] uplink lost (no carrier)', wait: 220 });
+            L.push({ cls: 'dim', text: lastOnlineText(), wait: 160 });
             flavor.forEach(([cls, text]) => L.push({ cls, text, wait: 260, type: true }));
             L.push({ cls: 'dim', text: '[ .... ] auto-reconnect: enabled', wait: 150 });
         } else {
@@ -776,6 +806,11 @@ interface Scene {
         render(); // tryb "check"
         requestAnimationFrame(frame);
         const ok = await probe();
+        if (ok && assumeOffline) {
+            // wejście z ?lost, a sieć już wróciła - od razu wracamy do wyszukiwarki
+            restored();
+            return;
+        }
         mode = ok ? 'notfound' : 'offline';
         render();
         burst(380);
