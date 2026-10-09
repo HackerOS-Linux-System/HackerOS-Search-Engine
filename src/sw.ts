@@ -6,8 +6,11 @@ declare const __BUILD_ID__: string;
 const sw = self as unknown as ServiceWorkerGlobalScope;
 
 const CACHE = `hackeros-search-${__BUILD_ID__}`;
-const OFFLINE_PAGE = 'offline.html';
-const FALLBACK_PAGE = '404.html';
+// Dwa osobne ekrany offline - po jednym na wariant strony:
+//   blue.html            -> offline.html (Blue Edition)
+//   index.html i reszta  -> 404.html     (zwykła strona: terminal + glitch + motywy)
+const OFFLINE_BLUE = 'offline.html';
+const OFFLINE_MAIN = '404.html';
 const PRECACHE: readonly string[] = [
     'offline.html',
     '404.html',
@@ -52,14 +55,17 @@ sw.addEventListener('fetch', (event: FetchEvent) => {
     if (url.origin !== sw.location.origin) return;      // zewnętrzne (Ecosia, ikony) - zostawiamy przeglądarce
     if (url.searchParams.has('probe')) return;          // test łączności z 404.html - ma iść prosto do sieci
 
-    // Nawigacja (wejście na stronę): sieć -> a gdy jej brak, dialog offline.html
-    // (który sam pobiera motyw / tryb strony z localStorage). Ostatecznie 404.html, potem prosty tekst.
+    // Nawigacja (wejście na stronę): sieć -> a gdy jej brak, ekran offline PASUJĄCY DO WARIANTU strony:
+    // blue.html dostaje offline.html, zwykła strona (index.html, motywy) - 404.html (który sam bierze motyw z localStorage).
+    // Service Worker nie ma dostępu do localStorage, dlatego wariant rozpoznaje po adresie. Na końcu prosty tekst.
     if (req.mode === 'navigate') {
+        const isBlue = /\/blue(\.html)?$/.test(url.pathname);
+        const [first, second] = isBlue ? [OFFLINE_BLUE, OFFLINE_MAIN] : [OFFLINE_MAIN, OFFLINE_BLUE];
         event.respondWith(
             fetch(req, { cache: 'no-store' }).catch(async () => {
                 return (
-                    (await caches.match(OFFLINE_PAGE)) ??
-                    (await caches.match(FALLBACK_PAGE)) ??
+                    (await caches.match(first)) ??
+                    (await caches.match(second)) ??
                     new Response('Offline', {
                         status: 503,
                         headers: { 'Content-Type': 'text/plain; charset=utf-8' },
