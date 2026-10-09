@@ -4,17 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex">
+    <meta name="hackeros-offline" content="main">
     <title>HackerOS Search | Offline</title>
     <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/HackerOS-Linux-System/HackerOS-Website/main/HackerOS.png">
     <!--
-        404.html - strona offline / 404 dla HackerOS Search.
+        404.html - ekran offline ZWYKŁEJ strony HackerOS Search (index.html, motywy default/space/cyber/matrix/sunset)
+        oraz strona 404. Blue Edition (blue.html) ma własny ekran offline: offline.html.
         Plik jest w pełni samodzielny (CSS + JS inline), żeby działał bez internetu.
         Kod JS pochodzi z src/offline.ts - podczas builda (scripts/build.ts) jest kompilowany
         i wstawiany w miejsce znacznika @@OFFLINE_JS@@ na dole tego pliku.
-        Wyświetla go Service Worker (sw.js), gdy nie da się załadować strony.
+        Wyświetla go Service Worker (sw.js), gdy nie da się załadować zwykłej strony (blue.html dostaje offline.html),
+        a gdy internet zniknie na otwartej stronie - wstawia go guard.ts z kopii w localStorage (hackeros_offline_html_main).
+        Znacznik <meta name="hackeros-offline"> pozwala guardowi odróżnić ten plik od zwykłego błędu.
 
         Podgląd w przeglądarce (bez wyłączania internetu):
-          404.html?offline                  -> wymuszony tryb offline
+          404.html?offline                  -> wymuszony tryb offline (podgląd, nie wraca do strony)
+          404.html?lost                     -> tryb offline z prawdziwym testem sieci (tak wchodzi tu strona główna)
           404.html?offline&theme=matrix     -> + wybrany motyw (default|space|cyber|matrix|sunset)
           404.html?theme=cyber              -> zwykły 404 w motywie cyber
     -->
