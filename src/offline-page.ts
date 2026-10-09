@@ -1,6 +1,7 @@
 export {};
 
-// Logika offline.html - dialog "brak internetu" dla każdego trybu strony.
+// Logika offline.html - dialog "brak internetu" dla BLUE EDITION (blue.html).
+// Zwykła strona (index.html, wszystkie motywy) ma osobny ekran: 404.html / src/offline.ts.
 // Kod jest kompilowany i wstawiany INLINE do offline.html (patrz scripts/build.ts),
 // dzięki czemu ekran działa w pełni samodzielnie, także bez internetu.
 
@@ -69,13 +70,12 @@ interface Dot {
     const reduce: boolean = !!window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
     const lang: Lang = (navigator.language || 'en').toLowerCase().startsWith('pl') ? 'pl' : 'en';
 
-    /* ------------------------------------------------------------------ który tryb strony? (z localStorage) */
+    /* ------------------------------------------------------------------ motyw: ten ekran to Blue Edition */
+    // Ekran jest teraz zawsze w stylu Blue - motyw zwykłej strony obsługuje 404.html.
+    // Pozostałe motywy zostają tylko jako podgląd: offline.html?preview&theme=matrix
     function detectTheme(): Theme {
         const q = params.get('theme');
-        if (isTheme(q)) return q;
-        if (params.get('variant') === 'blue' || ls('hackeros_variant') === 'blue') return 'blue';
-        const saved = ls('theme');
-        return isTheme(saved) && saved !== 'blue' ? saved : 'default';
+        return isTheme(q) ? q : 'blue';
     }
     const theme: Theme = detectTheme();
     document.body.classList.add('t-' + theme);
@@ -151,13 +151,14 @@ interface Dot {
 
     /* ------------------------------------------------------------------ adres powrotu */
     function homeUrl(): string {
-        const r = ls('hackeros_root');
+        // wracamy na blue.html (adres zapisany przez guard.ts), a nie na zwykłą stronę główną
+        const r = ls('hackeros_root_blue');
         if (r) return r;
         const seg = location.pathname.split('/').filter(Boolean)[0];
         if (location.hostname.endsWith('.github.io') && seg && !seg.endsWith('.html')) {
-            return location.origin + '/' + seg + '/';
+            return location.origin + '/' + seg + '/blue.html';
         }
-        return /offline\.html$/.test(location.pathname) ? 'index.html' : location.origin + '/';
+        return /offline\.html$/.test(location.pathname) ? 'blue.html' : location.href.split(/[?#]/)[0];
     }
 
     /* ------------------------------------------------------------------ test łączności */
@@ -199,7 +200,7 @@ interface Dot {
         card.classList.remove('ok');
         titleEl.textContent = TXT.title[theme];
         descEl.innerHTML = TXT.desc[theme];
-        document.title = 'HackerOS Search | ' + TXT.title[theme];
+        document.title = (theme === 'blue' ? 'Blue Search' : 'HackerOS Search') + ' | ' + TXT.title[theme];
         retryBtn.textContent = TXT.retry;
         barFill.style.width = ((RETRY_EVERY - countdown) / RETRY_EVERY) * 100 + '%';
         renderLastOnline();
