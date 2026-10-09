@@ -4,28 +4,26 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="robots" content="noindex, nofollow">
-    <meta name="hackeros-offline" content="1">
-    <title>HackerOS Search | Offline</title>
-    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/HackerOS-Linux-System/HackerOS-Website/main/HackerOS.png">
+    <meta name="hackeros-offline" content="blue">
+    <title>Blue Search | Offline</title>
+    <link rel="icon" type="image/png" href="https://raw.githubusercontent.com/HackerOS-Linux-System/Blue-Environment/main/images/logo.png">
     <!--
-        offline.html - dialog "brak internetu" dla WSZYSTKICH trybów strony
-        (default, space, cyber, matrix, sunset oraz Blue Edition - blue.html).
+        offline.html - dialog "brak internetu" dla BLUE EDITION (blue.html).
+        Zwykła strona (index.html, motywy default / space / cyber / matrix / sunset) ma własny ekran offline: 404.html.
 
         Plik jest w pełni samodzielny (CSS + JS inline), żeby działał bez internetu.
         Kod JS pochodzi z src/offline-page.ts - podczas builda (scripts/build.ts) jest kompilowany
         i wstawiany w miejsce znacznika @@OFFLINE_PAGE_JS@@ na dole tego pliku.
 
-        Skąd strona wie, jaki tryb pokazać (bez internetu)? Z localStorage:
-          theme               - wybrany motyw strony głównej
-          hackeros_variant    - "main" albo "blue" (z której strony użytkownik przyszedł)
-          hackeros_root       - adres, do którego wrócimy po odzyskaniu sieci
-          hackeros_last_online- czas ostatniego połączenia
-        Kopia tego pliku jest też trzymana w localStorage (hackeros_offline_html) i w cache Service Workera.
+        Kto go pokazuje?
+          - Service Worker (sw.js), gdy blue.html nie może się załadować bez internetu,
+          - guard.ts, gdy internet zniknie na otwartej blue.html (kopia w localStorage: hackeros_offline_html_blue).
+        Adres powrotu po odzyskaniu sieci: localStorage hackeros_root_blue (a gdy brak - blue.html).
+        Czas ostatniego połączenia: localStorage hackeros_last_online.
 
         Podgląd w przeglądarce (bez wyłączania internetu):
-          offline.html?preview                       -> dialog trwale widoczny
-          offline.html?preview&theme=matrix          -> + motyw (default|space|cyber|matrix|sunset)
-          offline.html?preview&variant=blue          -> wersja Blue Edition
+          offline.html?preview                       -> dialog trwale widoczny (Blue)
+          offline.html?preview&theme=matrix          -> podgląd w innym motywie (default|space|cyber|matrix|sunset|blue)
     -->
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
