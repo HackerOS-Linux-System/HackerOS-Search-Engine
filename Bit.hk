@@ -1,1 +1,18 @@
+[package]
+-> name        => hackeros-search-engine
+-> version     => 1.0.0
+-> description => HackerOS Search - wyszukiwarka oparta o Ecosia, cala strona napisana w HackerScript.
+-> authors     => ["HackerOS Team"]
+-> license     => MIT
+-> lang        => hs
 
+[layout]
+-> src => cmd
+
+[commands]
+-> site
+--> run => mkdir -p cache && hackerc build scripts/build.hcs -o cache/site-build.js && node cache/site-build.js
+--> description => Zbuduj cala strone z HackerScript do dist/ (index, blue, 404, offline, sw.js)
+-> preview
+--> run => bit site && cd dist && python3 -m http.server 8080
+--> description => Zbuduj i serwuj dist/ na http://localhost:8080
