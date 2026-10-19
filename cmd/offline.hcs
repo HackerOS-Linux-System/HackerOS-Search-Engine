@@ -1,0 +1,820 @@
+use <mode:website>
+include <lib/util>
+
+!!! offline.html - dialog "brak internetu" dla BLUE EDITION (HackerScript, mode:website).
+!!! Port 1:1 z offline.html + src/offline-page.ts. Wynik (app.js) jest wklejany INLINE
+!!! do offline.html przez skrypt budowania (strona dziala samodzielnie, takze bez internetu).
+!!! Podglad: offline.html?preview  /  offline.html?preview&theme=matrix
+!!! Wszystkie nazwy z prefiksem `of_`.
+
+style {
+    /* skeleton hackerc ustawia body { line-height: 1.5 } i #app { max-width } - oryginal tego nie mial */
+    #app { display: contents; max-width: none; margin: 0; padding: 0; }
+    body { line-height: normal; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+            --bg1: #1E293B; --bg2: #334155;
+            --fg: #F3F4F6; --dim: #9CA3AF;
+            --acc: #60a5fa; --acc2: #a78bfa; --ok: #4ade80; --warn: #f87171;
+            --card: rgba(17, 24, 39, .78); --line: rgba(255, 255, 255, .14);
+            --glow: rgba(96, 165, 250, .28);
+            --btn-fg: #0b1220;
+        }
+        body.t-space  { --bg1:#000000; --bg2:#000022; --fg:#e8eeff; --dim:#8b97c4; --acc:#9bb8ff; --acc2:#ffffff; --card:rgba(4,6,24,.78); --line:rgba(155,184,255,.25); --glow:rgba(155,184,255,.3); }
+        body.t-cyber  { --bg1:#0a0f1e; --bg2:#1a0b2e; --fg:#e6faff; --dim:#7aa6b8; --acc:#00ffff; --acc2:#ff00ff; --warn:#ff2a6d; --card:rgba(10,8,30,.82); --line:rgba(0,255,255,.45); --glow:rgba(0,255,255,.3); --font:'JetBrains Mono','Fira Code','Cascadia Code',Consolas,'Courier New',monospace; }
+        body.t-matrix { --bg1:#000000; --bg2:#001a00; --fg:#00ff66; --dim:#00a844; --acc:#00ff66; --acc2:#aaffcc; --ok:#aaffcc; --warn:#ff4d4d; --card:rgba(0,12,4,.84); --line:rgba(0,255,102,.4); --glow:rgba(0,255,102,.3); --btn-fg:#001a09; --font:'JetBrains Mono','Fira Code','Cascadia Code',Consolas,'Courier New',monospace; }
+        body.t-sunset { --bg1:#2b0f1e; --bg2:#c9600f; --fg:#ffe4b8; --dim:#e0b184; --acc:#ffb347; --acc2:#ff5e7e; --warn:#ff4d6d; --card:rgba(43,15,30,.8); --line:rgba(255,179,71,.4); --glow:rgba(255,179,71,.3); --btn-fg:#2b0f1e; }
+        body.t-blue   { --bg1:#03060f; --bg2:#070d1f; --fg:#e6ecfa; --dim:#8a97b8; --acc:#3b8bff; --acc2:#6aa8ff; --card:rgba(10,17,36,.78); --line:#1d2b4f; --glow:rgba(59,139,255,.28); --btn-fg:#fff; }
+
+        html, body { height: 100%; }
+        body {
+            font-family: var(--font);
+            color: var(--fg);
+            background: linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 100%);
+            background-attachment: fixed;
+            overflow: hidden;
+        }
+        body.t-sunset { background: linear-gradient(135deg, #2b0f1e 0%, #7a2f1f 50%, #c9600f 100%); background-attachment: fixed; }
+        body.t-blue {
+            background:
+                radial-gradient(ellipse 60% 38% at 62% 46%, rgba(40, 70, 150, .22), transparent 70%),
+                radial-gradient(ellipse 45% 30% at 30% 68%, rgba(30, 60, 140, .16), transparent 70%),
+                radial-gradient(ellipse 80% 60% at 50% 40%, #070d1f, #03060f 80%);
+        }
+
+        canvas#bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+        .overlay {
+            position: fixed; inset: 0; z-index: 10;
+            display: grid; place-items: center; padding: 20px;
+            background: rgba(0, 0, 0, .28);
+            backdrop-filter: blur(2px);
+        }
+
+        .card {
+            width: min(460px, 100%);
+            padding: 30px 28px 24px;
+            text-align: center;
+            background: var(--card);
+            border: 1px solid var(--line);
+            border-radius: 18px;
+            box-shadow: 0 22px 60px rgba(0, 0, 0, .55), 0 0 44px var(--glow);
+            backdrop-filter: blur(12px);
+            animation: pop .4s cubic-bezier(.2, .9, .3, 1.15) both;
+        }
+        @keyframes pop { from { opacity: 0; transform: translateY(14px) scale(.96); } }
+
+        body.t-cyber .card {
+            border-radius: 3px;
+            clip-path: polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+            box-shadow: none;
+        }
+        body.t-matrix .card { border-radius: 4px; }
+        body.t-matrix h1, body.t-cyber h1 { text-shadow: 0 0 10px var(--glow), 0 0 22px var(--glow); }
+        body.t-cyber h1 { text-transform: uppercase; letter-spacing: .06em; }
+        body.t-sunset .card { background: linear-gradient(160deg, rgba(43,15,30,.86), rgba(122,47,31,.8)); }
+
+        .icon {
+            position: relative; display: grid; place-items: center;
+            width: 78px; height: 78px; margin: 0 auto 16px;
+            border-radius: 50%;
+            color: var(--acc);
+            background: radial-gradient(circle, color-mix(in srgb, var(--acc) 18%, transparent), transparent 70%);
+            border: 1px solid var(--line);
+        }
+        .icon::after {
+            content: ''; position: absolute; inset: -9px; border-radius: 50%;
+            border: 2px solid var(--acc); opacity: 0;
+            animation: ring 2.4s ease-out infinite;
+        }
+        @keyframes ring { 0% { transform: scale(.82); opacity: .55; } 100% { transform: scale(1.25); opacity: 0; } }
+        .icon svg { width: 38px; height: 38px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+        .card.ok .icon { color: var(--ok); }
+        .card.ok .icon::after { border-color: var(--ok); }
+        .card.ok .icon .wifi-off, .card:not(.ok) .icon .wifi-on { display: none; }
+
+        h1 { font-size: clamp(1.55rem, 5.5vw, 2rem); font-weight: 800; line-height: 1.15; margin-bottom: 10px; }
+        p.desc { color: var(--dim); font-size: .96rem; line-height: 1.6; margin-bottom: 18px; }
+        p.desc b { color: var(--fg); font-weight: 700; }
+
+        .status {
+            display: grid; gap: 4px; margin-bottom: 14px;
+            font-size: .82rem; color: var(--dim);
+        }
+        .status strong { color: var(--fg); font-weight: 600; }
+        .bar { height: 3px; margin: 0 auto 20px; width: 100%; border-radius: 2px; background: rgba(255,255,255,.1); overflow: hidden; }
+        .bar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--acc), var(--acc2)); transition: width 1s linear; }
+        .card.ok .bar i { background: var(--ok); width: 100% !important; }
+
+        .actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+        .btn {
+            font: 700 .95rem/1 var(--font);
+            padding: 12px 22px; border-radius: 10px; border: 0; cursor: pointer;
+            color: var(--btn-fg); background: linear-gradient(135deg, var(--acc), var(--acc2));
+            transition: transform .15s ease, box-shadow .2s ease, opacity .2s;
+        }
+        .btn:hover { transform: translateY(-1px); box-shadow: 0 6px 20px var(--glow); }
+        .btn:disabled { opacity: .55; cursor: progress; transform: none; box-shadow: none; }
+        .btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 3px; }
+        body.t-cyber .btn, body.t-matrix .btn { border-radius: 2px; text-transform: uppercase; letter-spacing: .06em; }
+
+        .hint { margin-top: 18px; font-size: .74rem; color: var(--dim); opacity: .85; line-height: 1.5; }
+        .hint::before { content: '\25CF'; color: var(--ok); margin-right: 6px; font-size: .7em; vertical-align: 1px; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .card, .icon::after { animation: none; }
+            .bar i { transition: none; }
+        }
+    }
+
+!! ------------------------------------------------------------------ stan
+let of_themes = ["default", "space", "cyber", "matrix", "sunset", "blue"]
+let of_params = null
+let of_preview = false
+let of_reduce = false
+let of_lang = "en"
+let of_theme = "blue"
+
+let of_card = null
+let of_title = null
+let of_desc = null
+let of_status = null
+let of_last = null
+let of_bar = null
+let of_retry = null
+let of_bg = null
+let of_c = null
+
+let of_retry_every = 5
+let of_countdown = 5
+let of_busy = false
+let of_restored = false
+
+let of_w = 0.0
+let of_h = 0.0
+let of_fs = 16
+let of_mch = Array.from("ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789")
+let of_stars: List<OfStar> = []
+let of_dots: List<OfDot> = []
+let of_drops: List<Float> = []
+let of_grid_off = 0.0
+let of_matrix_acc = 0.0
+let of_prev_t = 0.0
+
+struct OfStar [
+    x: Float,
+    y: Float,
+    r: Float,
+    p: Float,
+    s: Float,
+    v: Float
+]
+
+struct OfDot [
+    x: Float,
+    y: Float,
+    vx: Float,
+    vy: Float,
+    r: Float,
+    h: Float
+]
+
+!! ------------------------------------------------------------------ pomocnicze
+fun of_true(x) [
+    end true
+]
+
+fun of_false(x) [
+    end false
+]
+
+fun of_div(a, b) -> Float [
+    end (a as Float) / (b as Float)
+]
+
+fun of_sleep(ms) [
+    end sleep(ms)
+]
+
+fun of_is_theme(v) -> Bool [
+    for t in of_themes [
+        if t == v [
+            end true
+        ]
+    ]
+    end false
+]
+
+!! wybor tekstu wg motywu: default, space, cyber, matrix, sunset, blue
+fun of_by_theme(t: Str, a, b, c, d, e, f) [
+    if t == "space" [
+        end b
+    ]
+    if t == "cyber" [
+        end c
+    ]
+    if t == "matrix" [
+        end d
+    ]
+    if t == "sunset" [
+        end e
+    ]
+    if t == "blue" [
+        end f
+    ]
+    end a
+]
+
+!! ------------------------------------------------------------------ teksty
+fun of_tx_title(t: Str) -> Str [
+    if of_lang == "pl" [
+        end of_by_theme(t, "Brak internetu", "Utrata sygnału", "Łącze zerwane", "Rozłączono", "Brak sygnału", "Brak internetu")
+    ]
+    end of_by_theme(t, "No internet", "Signal lost", "Link severed", "Disconnected", "No signal", "No internet")
+]
+
+fun of_tx_desc(t: Str) -> Str [
+    if of_lang == "pl" [
+        end of_by_theme(t, "Brak połączenia z internetem. Sprawdź <b>kabel, Wi-Fi lub router</b> - wrócimy, gdy tylko sieć znów zadziała.", "Houston, mamy problem. <b>Łączność z Ziemią</b> została przerwana. Wracamy na orbitę, gdy sygnał się odnajdzie.", "Uplink zerwany przez nieznany proces. <b>ICE</b> odcięło Twoje łącze. Trwa próba odzyskania dostępu...", "Obudź się... Matrix stracił z Tobą kontakt. <b>Podążaj za białym królikiem</b> - czyli sprawdź kabel.", "Śledzenie taśmy zgubione. <b>Sprawdź kabel</b> albo dmuchnij w kasetę i poczekaj na sygnał.", "Utraciliśmy łączność z siecią. Sprawdź <b>kabel, Wi-Fi lub router</b> - Blue wróci, gdy tylko internet znów zadziała.")
+    ]
+    end of_by_theme(t, "No internet connection. Check your <b>cable, Wi-Fi or router</b> - we will be back as soon as the network is.", "Houston, we have a problem. The <b>link to Earth</b> is down. We will re-enter orbit once the signal returns.", "Uplink cut by an unknown process. <b>ICE</b> severed your connection. Attempting to regain access...", "Wake up... the Matrix has lost you. <b>Follow the white rabbit</b> - or just check your cable.", "Tracking lost. <b>Check the cable</b> or blow on the cartridge and wait for the signal.", "We lost the connection to the network. Check your <b>cable, Wi-Fi or router</b> - Blue returns as soon as the internet does.")
+]
+
+fun of_tx_retry() -> Str [
+    if of_lang == "pl" [
+        end "Spróbuj ponownie"
+    ]
+    end "Try again"
+]
+
+fun of_tx_trying() -> Str [
+    if of_lang == "pl" [
+        end "Łączenie..."
+    ]
+    end "Connecting..."
+]
+
+fun of_tx_checking() -> Str [
+    if of_lang == "pl" [
+        end "Sprawdzanie połączenia..."
+    ]
+    end "Checking connection..."
+]
+
+fun of_tx_next_in(s) -> Str [
+    if of_lang == "pl" [
+        end "Kolejna próba za " + s + "s"
+    ]
+    end "Next attempt in " + s + "s"
+]
+
+fun of_tx_last_online(w, a) -> Str [
+    if of_lang == "pl" [
+        end "Ostatnio online: <strong>" + w + "</strong> (" + a + ")"
+    ]
+    end "Last online: <strong>" + w + "</strong> (" + a + ")"
+]
+
+fun of_tx_never() -> Str [
+    if of_lang == "pl" [
+        end "Ostatnie połączenie: brak danych"
+    ]
+    end "Last connection: no data"
+]
+
+fun of_tx_restored_title() -> Str [
+    if of_lang == "pl" [
+        end "Połączono!"
+    ]
+    end "Connected!"
+]
+
+fun of_tx_restored_desc() -> Str [
+    if of_lang == "pl" [
+        end "Internet wrócił. <b>Wracam do wyszukiwarki...</b>"
+    ]
+    end "The internet is back. <b>Heading back to the search engine...</b>"
+]
+
+fun of_tx_restored_status() -> Str [
+    if of_lang == "pl" [
+        end "Połączenie przywrócone"
+    ]
+    end "Connection restored"
+]
+
+fun of_tx_preview_status() -> Str [
+    if of_lang == "pl" [
+        end "Tryb podglądu - dialog nie zniknie sam"
+    ]
+    end "Preview mode - the dialog will not close by itself"
+]
+
+fun of_tx_ago(m) -> Str [
+    if of_lang == "pl" [
+        end m + " min temu"
+    ]
+    end m + " min ago"
+]
+
+fun of_tx_just_now() -> Str [
+    if of_lang == "pl" [
+        end "przed chwilą"
+    ]
+    end "just now"
+]
+
+fun of_tx_hint() -> Str [
+    if of_lang == "pl" [
+        end "Ta strona jest zapisana w pamięci przeglądarki i działa bez internetu."
+    ]
+    end "This page is stored in your browser and works without internet."
+]
+
+!! ------------------------------------------------------------------ adres powrotu
+fun of_home_url() -> Str [
+    !! wracamy na blue.html (adres zapisany przez guard), a nie na zwykla strone glowna
+    let r = u_ls_get("hackeros_root_blue")
+    if r != null and r != "" [
+        end r
+    ]
+    let parts = location.pathname.split("/").filter(Boolean)
+    let seg = ""
+    if parts.len() > 0 [
+        seg = parts[0]
+    ]
+    if location.hostname.endsWith(".github.io") and seg != "" and not str_ends_with(seg, ".html") [
+        end location.origin + "/" + seg + "/blue.html"
+    ]
+    if str_ends_with(location.pathname, "offline.html") [
+        end "blue.html"
+    ]
+    end location.href.split("?")[0].split("#")[0]
+]
+
+!! ------------------------------------------------------------------ test lacznosci
+async fun of_probe() -> Bool [
+    if of_preview [
+        await of_sleep(600)
+        end false
+    ]
+    if not navigator.onLine [
+        end false
+    ]
+    if location.protocol == "file:" [
+        end true
+    ]
+    let ctl = Reflect.construct(AbortController, [])
+    let tm = set_timeout(ctl.abort.bind(ctl), 3500)
+    !! parametr "probe" jest pomijany przez Service Worker -> zapytanie idzie prawdziwie do sieci
+    let opts = u_obj("{\"method\":\"HEAD\",\"cache\":\"no-store\"}")
+    opts.signal = ctl.signal
+    let good = await fetch(location.pathname + "?probe=" + Date.now(), opts).then(of_true, of_false)
+    clearTimeout(tm)
+    end good
+]
+
+!! ------------------------------------------------------------------ render
+fun of_render_last_online() [
+    let raw = u_ls_get("hackeros_last_online")
+    let ts = 0
+    if raw != null [
+        ts = Number(raw)
+    ]
+    if not Number.isFinite(ts) or ts <= 0 [
+        of_last.textContent = of_tx_never()
+        end 0
+    ]
+    let d = Reflect.construct(Date, [ts])
+    let loc = "en-US"
+    if of_lang == "pl" [
+        loc = "pl-PL"
+    ]
+    let when = d.toLocaleTimeString(loc, u_obj("{\"hour\":\"2-digit\",\"minute\":\"2-digit\"}"))
+    let min = Math.floor((Date.now() - ts) / 60000)
+    let ago = of_tx_just_now()
+    if min >= 1 [
+        ago = of_tx_ago(min)
+    ]
+    of_last.innerHTML = of_tx_last_online(when, ago)
+]
+
+fun of_bar_width() -> Str [
+    end (of_div(of_retry_every - of_countdown, of_retry_every) * 100) + "%"
+]
+
+fun of_render_offline() [
+    u_cls_remove(of_card, "ok")
+    of_title.textContent = of_tx_title(of_theme)
+    of_desc.innerHTML = of_tx_desc(of_theme)
+    let brand = "HackerOS Search"
+    if of_theme == "blue" [
+        brand = "Blue Search"
+    ]
+    document.title = brand + " | " + of_tx_title(of_theme)
+    of_retry.textContent = of_tx_retry()
+    of_bar.style.width = of_bar_width()
+    of_render_last_online()
+]
+
+fun of_render_countdown() [
+    if of_preview [
+        of_status.textContent = of_tx_preview_status()
+    ] else [
+        of_status.textContent = of_tx_next_in(of_countdown)
+    ]
+    of_bar.style.width = of_bar_width()
+]
+
+fun of_after_restored() [
+    !! otwarty jako osobna strona -> wracamy do wyszukiwarki; wstawiony w miejsce strony -> odswiezamy ja
+    if str_ends_with(location.pathname, "offline.html") [
+        location.replace(of_home_url())
+    ] else [
+        location.reload()
+    ]
+]
+
+fun of_on_restored() [
+    of_restored = true
+    of_card.classList.add("ok")
+    of_title.textContent = of_tx_restored_title()
+    of_desc.innerHTML = of_tx_restored_desc()
+    of_status.textContent = of_tx_restored_status()
+    setTimeout(of_after_restored, 1300)
+]
+
+async fun of_reconnect() [
+    if of_busy or of_restored [
+        end 0
+    ]
+    of_busy = true
+    of_retry.disabled = true
+    of_status.textContent = of_tx_trying()
+    let good = await of_probe()
+    of_busy = false
+    of_retry.disabled = false
+    if good [
+        of_on_restored()
+        end 0
+    ]
+    of_countdown = of_retry_every
+    of_render_countdown()
+]
+
+fun of_tick() [
+    if of_busy or of_restored [
+        end 0
+    ]
+    of_countdown = of_countdown - 1
+    if of_countdown <= 0 [
+        of_reconnect()
+        end 0
+    ]
+    of_render_countdown()
+    of_render_last_online()
+]
+
+fun of_on_retry_click(e) [
+    of_countdown = 0
+    of_reconnect()
+]
+
+fun of_on_keydown(e) [
+    if (e.key == "r" or e.key == "R") and not e.ctrlKey and not e.metaKey [
+        of_reconnect()
+    ]
+]
+
+fun of_on_online(e) [
+    of_reconnect()
+]
+
+!! ------------------------------------------------------------------ tlo (canvas) - osobne dla kazdego trybu
+fun of_make_dots(n, h0, h1, sp) [
+    let out: List<OfDot> = []
+    let i = 0
+    while i < n [
+        out.push(OfDot(u_rnd(0, of_w), u_rnd(0, of_h), u_rnd(0 - sp, sp), u_rnd(0 - sp, sp), u_rnd(1, 2.4), u_rnd(h0, h1)))
+        i = i + 1
+    ]
+    end out
+]
+
+fun of_init_scene() [
+    let dpr = Math.min(window.devicePixelRatio or 1, 2)
+    of_w = innerWidth
+    of_h = innerHeight
+    of_bg.width = of_w * dpr
+    of_bg.height = of_h * dpr
+    of_c.setTransform(dpr, 0, 0, dpr, 0, 0)
+    of_stars = []
+    of_dots = []
+    of_drops = []
+    if of_theme == "space" or of_theme == "blue" [
+        let per = 5500
+        let cap = 280
+        if of_theme == "blue" [
+            per = 2800
+            cap = 520
+        ]
+        let n = Math.min(cap, Math.floor((of_w * of_h) / per))
+        let i = 0
+        while i < n [
+            let r = u_rnd(0.3, 1.5)
+            if of_theme == "blue" [
+                r = u_rnd(0.3, 1.3)
+            ]
+            of_stars.push(OfStar(u_rnd(0, of_w), u_rnd(0, of_h), r, u_rnd(0, 6.28), u_rnd(0.4, 1.6), 0.01 + r * 0.02))
+            i = i + 1
+        ]
+    ] elif of_theme == "matrix" [
+        let cols = Math.ceil(of_w / of_fs)
+        let i = 0
+        while i < cols [
+            of_drops.push(u_rnd(-40, 0))
+            i = i + 1
+        ]
+    ] elif of_theme == "cyber" [
+        of_dots = of_make_dots(36, 170, 310, 0.25)
+    ] elif of_theme == "sunset" [
+        of_dots = of_make_dots(40, 10, 45, 0.18)
+    ] else [
+        of_dots = of_make_dots(50, 200, 230, 0.15)
+    ]
+]
+
+fun of_on_resize(e) [
+    of_init_scene()
+]
+
+fun of_draw_dots(links: Bool, dist, step: Bool) [
+    for p in of_dots [
+        if step [
+            p.x = p.x + p.vx
+            p.y = p.y + p.vy
+            if p.x < 0 or p.x > of_w [
+                p.vx = p.vx * -1
+            ]
+            if p.y < 0 or p.y > of_h [
+                p.vy = p.vy * -1
+            ]
+        ]
+        of_c.fillStyle = "hsla(" + p.h + ",70%,60%,.55)"
+        of_c.beginPath()
+        of_c.arc(p.x, p.y, p.r, 0, 6.2832)
+        of_c.fill()
+    ]
+    if not links [
+        end 0
+    ]
+    of_c.lineWidth = 0.5
+    let i = 0
+    while i < of_dots.len() [
+        let j = i + 1
+        while j < of_dots.len() [
+            let d = Math.hypot(of_dots[i].x - of_dots[j].x, of_dots[i].y - of_dots[j].y)
+            if d < dist [
+                of_c.strokeStyle = "hsla(" + of_dots[i].h + ",70%,60%," + ((1 - of_div(d, dist)) * 0.25) + ")"
+                of_c.beginPath()
+                of_c.moveTo(of_dots[i].x, of_dots[i].y)
+                of_c.lineTo(of_dots[j].x, of_dots[j].y)
+                of_c.stroke()
+            ]
+            j = j + 1
+        ]
+        i = i + 1
+    ]
+]
+
+fun of_draw_stars(t, dt) [
+    of_c.clearRect(0, 0, of_w, of_h)
+    let rgb = "255,255,255"
+    if of_theme == "blue" [
+        rgb = "200,218,255"
+    ]
+    for s in of_stars [
+        if not of_reduce [
+            s.x = s.x - s.v * dt * 0.06 * 16
+            if s.x < 0 [
+                s.x = of_w
+                s.y = u_rnd(0, of_h)
+            ]
+        ]
+        let a = 0.7
+        if not of_reduce [
+            a = 0.35 + 0.65 * Math.abs(Math.sin(t * 0.001 * s.s + s.p))
+        ]
+        of_c.fillStyle = "rgba(" + rgb + "," + a + ")"
+        of_c.beginPath()
+        of_c.arc(s.x, s.y, s.r, 0, 6.2832)
+        of_c.fill()
+    ]
+]
+
+fun of_draw_matrix(dt) [
+    of_matrix_acc = of_matrix_acc + dt
+    if of_matrix_acc < 55 [
+        end 0
+    ]
+    of_matrix_acc = 0
+    of_c.fillStyle = "rgba(0,0,0,.10)"
+    of_c.fillRect(0, 0, of_w, of_h)
+    of_c.font = of_fs + "px monospace"
+    let i = 0
+    while i < of_drops.len() [
+        let x = i * of_fs
+        let y = of_drops[i] * of_fs
+        if y > 0 [
+            of_c.fillStyle = "rgba(0,255,102,.85)"
+            of_c.fillText(of_mch[Math.floor(Math.random() * of_mch.len())], x, y - of_fs)
+            of_c.fillStyle = "#d6ffe6"
+            of_c.fillText(of_mch[Math.floor(Math.random() * of_mch.len())], x, y)
+        ]
+        if y > of_h and Math.random() > 0.975 [
+            of_drops[i] = 0
+        ]
+        of_drops[i] = of_drops[i] + 1
+        i = i + 1
+    ]
+]
+
+fun of_draw_cyber(dt) [
+    of_c.clearRect(0, 0, of_w, of_h)
+    let hy = of_h * 0.58
+    let sky = of_c.createLinearGradient(0, hy - 120, 0, hy)
+    sky.addColorStop(0, "rgba(255,0,255,0)")
+    sky.addColorStop(1, "rgba(255,0,255,.14)")
+    of_c.fillStyle = sky
+    of_c.fillRect(0, hy - 120, of_w, 120)
+    if not of_reduce [
+        of_grid_off = (of_grid_off + dt * 0.00035) % 1
+    ]
+    of_c.lineWidth = 1
+    let rows = 14
+    let k = 0
+    while k < rows [
+        let f = of_div(k + of_grid_off, rows)
+        let y = hy + (of_h - hy) * f * f
+        of_c.strokeStyle = "rgba(255,0,255," + (0.08 + f * 0.4) + ")"
+        of_c.beginPath()
+        of_c.moveTo(0, y)
+        of_c.lineTo(of_w, y)
+        of_c.stroke()
+        k = k + 1
+    ]
+    let cols = 18
+    let i = 0 - cols
+    while i <= cols [
+        of_c.strokeStyle = "rgba(0,255,255," + (0.12 + (1 - of_div(Math.abs(i), cols)) * 0.25) + ")"
+        of_c.beginPath()
+        of_c.moveTo(of_w / 2.0 + i * 14, hy)
+        of_c.lineTo(of_w / 2.0 + i * of_div(of_w, cols) * 0.9, of_h)
+        of_c.stroke()
+        i = i + 1
+    ]
+    of_c.strokeStyle = "rgba(0,255,255,.7)"
+    of_c.lineWidth = 1.5
+    of_c.beginPath()
+    of_c.moveTo(0, hy)
+    of_c.lineTo(of_w, hy)
+    of_c.stroke()
+    of_draw_dots(true, 120, not of_reduce)
+]
+
+fun of_draw_sunset(t) [
+    of_c.clearRect(0, 0, of_w, of_h)
+    let r = Math.min(of_w, of_h) * 0.2
+    let cx = of_w / 2.0
+    let cy = of_h * 0.7
+    let g = of_c.createLinearGradient(0, cy - r, 0, cy + r)
+    g.addColorStop(0, "rgba(255,214,107,.75)")
+    g.addColorStop(1, "rgba(255,77,141,.75)")
+    of_c.fillStyle = g
+    of_c.beginPath()
+    of_c.arc(cx, cy, r, 0, 6.2832)
+    of_c.fill()
+    of_c.globalCompositeOperation = "destination-out"
+    let sp = r * 0.2
+    let shift = 0.0
+    if not of_reduce [
+        shift = (t * 0.012) % sp
+    ]
+    let j = 0
+    while j < 9 [
+        let y = cy + r * 0.05 + j * sp - shift + sp
+        if y > cy and y < cy + r [
+            of_c.fillRect(cx - r, y, r * 2, 2 + j * 1.6)
+        ]
+        j = j + 1
+    ]
+    of_c.globalCompositeOperation = "source-over"
+    of_draw_dots(true, 100, not of_reduce)
+]
+
+fun of_frame(t) [
+    !! po wstawieniu ekranu w miejsce innej strony stary canvas moze zniknac - wtedy konczymy petle
+    if not of_bg.isConnected [
+        end 0
+    ]
+    requestAnimationFrame(of_frame)
+    let dt = t - of_prev_t
+    if dt == 0 or Number.isNaN(dt) [
+        dt = 16
+    ]
+    dt = Math.min(60, dt)
+    of_prev_t = t
+    if of_theme == "space" or of_theme == "blue" [
+        of_draw_stars(t, dt)
+    ] elif of_theme == "matrix" [
+        of_draw_matrix(dt)
+    ] elif of_theme == "cyber" [
+        of_draw_cyber(dt)
+    ] elif of_theme == "sunset" [
+        of_draw_sunset(t)
+    ] else [
+        of_c.clearRect(0, 0, of_w, of_h)
+        of_draw_dots(true, 110, not of_reduce)
+    ]
+]
+
+!! ------------------------------------------------------------------ szkielet strony (head + body z offline.html)
+fun of_build_head() [
+    let head = document.head
+    u_attrs(u_el(head, "meta", "", ""), ["name", "robots", "content", "noindex, nofollow"])
+    !! znacznik rozpoznawany przez guard (odroznia ten plik od zwyklego bledu)
+    u_attrs(u_el(head, "meta", "", ""), ["name", "hackeros-offline", "content", "blue"])
+    u_attrs(u_el(head, "link", "", ""), ["rel", "icon", "type", "image/png", "href", "https://raw.githubusercontent.com/HackerOS-Linux-System/Blue-Environment/main/images/logo.png"])
+]
+
+fun of_svg_off() -> Str [
+    end u_join(['<svg class="wifi-off" viewBox="0 0 24 24"><path d="M2 2l20 20"/><path d="M8.5 16.4a5 5 0 0 1 7 0"/>', '<path d="M2 8.8a15 15 0 0 1 4.2-2.6"/><path d="M10.7 5.1A15 15 0 0 1 22 8.8"/><path d="M5 12.9a10 10 0 0 1 5.2-2.7"/>', '<path d="M14 10.3a10 10 0 0 1 5 2.6"/><path d="M12 20h.01"/></svg>'])
+]
+
+fun of_svg_on() -> Str [
+    end u_join(['<svg class="wifi-on" viewBox="0 0 24 24"><path d="M5 12.9a10 10 0 0 1 14 0"/><path d="M2 8.8a15 15 0 0 1 20 0"/>', '<path d="M8.5 16.4a5 5 0 0 1 7 0"/><path d="M12 20h.01"/></svg>'])
+]
+
+fun of_build_body() [
+    let body = document.body
+    of_bg = u_attrs(u_el(body, "canvas", "", ""), ["id", "bg", "aria-hidden", "true"])
+    let overlay = u_attrs(u_el(body, "div", "overlay", ""), ["id", "offlineDialog", "role", "alertdialog", "aria-modal", "true", "aria-labelledby", "dlgTitle", "aria-describedby", "dlgDesc"])
+    of_card = u_attrs(u_el(overlay, "div", "card", ""), ["id", "card"])
+    let icon = u_attrs(u_el(of_card, "div", "icon", ""), ["aria-hidden", "true"])
+    icon.innerHTML = of_svg_off() + of_svg_on()
+    of_title = u_attrs(u_el(of_card, "h1", "", "Brak internetu"), ["id", "dlgTitle"])
+    of_desc = u_attrs(u_el(of_card, "p", "desc", "Brak połączenia z internetem."), ["id", "dlgDesc"])
+    let st = u_attrs(u_el(of_card, "div", "status", ""), ["role", "status", "aria-live", "polite"])
+    of_status = u_attrs(u_el(st, "span", "", ""), ["id", "statusLine"])
+    of_status.innerHTML = "&nbsp;"
+    of_last = u_attrs(u_el(st, "span", "", ""), ["id", "lastOnline"])
+    of_last.innerHTML = "&nbsp;"
+    let bar = u_attrs(u_el(of_card, "div", "bar", ""), ["aria-hidden", "true"])
+    of_bar = u_attrs(u_el(bar, "i", "", ""), ["id", "barFill"])
+    let actions = u_el(of_card, "div", "actions", "")
+    of_retry = u_attrs(u_el(actions, "button", "btn", "Spróbuj ponownie"), ["type", "button", "id", "retry"])
+    let hint = u_attrs(u_el(of_card, "p", "hint", "Ta strona jest zapisana w pamięci przeglądarki i działa bez internetu."), ["id", "hint"])
+    hint.textContent = of_tx_hint()
+]
+
+!! ------------------------------------------------------------------ start
+fun main() [
+    of_params = Reflect.construct(URLSearchParams, [location.search])
+    of_preview = of_params.has("preview")
+    if window.matchMedia [
+        of_reduce = matchMedia("(prefers-reduced-motion: reduce)").matches
+    ]
+    of_lang = "en"
+    if u_is_pl() [
+        of_lang = "pl"
+    ]
+
+    !! motyw: ten ekran to Blue Edition; pozostale motywy tylko jako podglad (?preview&theme=matrix)
+    of_theme = "blue"
+    let q = u_call(of_params, "get", ["theme"])
+    if q != null and of_is_theme(q) [
+        of_theme = q
+    ]
+
+    of_build_head()
+    of_build_body()
+    document.body.classList.add("t-" + of_theme)
+    document.documentElement.lang = of_lang
+
+    of_c = of_bg.getContext("2d")
+    setInterval(of_tick, 1000)
+    of_retry.addEventListener("click", of_on_retry_click)
+    document.addEventListener("keydown", of_on_keydown)
+    window.addEventListener("online", of_on_online)
+
+    of_init_scene()
+    window.addEventListener("resize", of_on_resize)
+    requestAnimationFrame(of_frame)
+    of_render_offline()
+    of_status.textContent = of_tx_checking()
+    of_retry.focus()
+    of_reconnect()
+]
