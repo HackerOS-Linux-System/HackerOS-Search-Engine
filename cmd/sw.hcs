@@ -1,0 +1,138 @@
+use <lang:javascript>
+include <lib/util>
+
+!!! Service Worker (sw.js) - HackerOS Search, w calosci w HackerScript (lang:javascript).
+!!! Port 1:1 z src/sw.ts.
+!!!
+!!! Identyfikator buildu zmienia nazwe cache przy kazdym wdrozeniu, dzieki czemu uzytkownicy
+!!! dostaja swieze pliki - napis __BUILD_ID__ podmienia skrypt budowania (scripts/build.hcs).
+!!!
+!!! Dwa osobne ekrany offline - po jednym na wariant strony:
+!!!   blue.html            -> offline.html (Blue Edition)
+!!!   index.html i reszta  -> 404.html     (zwykla strona: terminal + glitch + motywy)
+!!!
+!!! Nazwy z prefiksem `sw_`. Rejestracja zdarzen jest na poziomie pliku (let ...), a nie w main(),
+!!! bo Service Worker musi podpiac obsluge zdarzen synchronicznie przy pierwszym uruchomieniu skryptu.
+
+let sw_cache = "hackeros-search-__BUILD_ID__"
+let sw_offline_blue = "offline.html"
+let sw_offline_main = "404.html"
+let sw_precache = ["offline.html", "404.html", "index.html", "script.js", "blue.html", "blue.js"]
+
+fun sw_null(e) [
+    end null
+]
+
+fun sw_warn(u, err) [
+    console.warn("[sw] precache pominiety:", u, err)
+]
+
+!! pojedynczo, zeby brak jednego pliku nie blokowal instalacji SW
+async fun sw_add(cache, u) [
+    let req = Reflect.construct(Request, [u, u_obj("{\"cache\":\"reload\"}")])
+    await cache.add(req).catch(sw_warn.bind(null, u))
+]
+
+async fun sw_install() [
+    let cache = await caches.open(sw_cache)
+    let jobs = []
+    for u in sw_precache [
+        jobs.push(sw_add(cache, u))
+    ]
+    await Promise.all(jobs)
+    await globalThis.skipWaiting()
+]
+
+fun sw_on_install(event) [
+    event.waitUntil(sw_install())
+]
+
+async fun sw_activate() [
+    let keys = await caches.keys()
+    let jobs = []
+    for k in keys [
+        if k != sw_cache [
+            jobs.push(caches.delete(k))
+        ]
+    ]
+    await Promise.all(jobs)
+    await clients.claim()
+]
+
+fun sw_on_activate(event) [
+    event.waitUntil(sw_activate())
+]
+
+!!! Nawigacja (wejscie na strone): siec -> a gdy jej brak, ekran offline PASUJACY DO WARIANTU strony:
+!!! blue.html dostaje offline.html, zwykla strona (index.html, motywy) - 404.html (ktory sam bierze
+!!! motyw z localStorage). Service Worker nie ma dostepu do localStorage, dlatego wariant rozpoznaje
+!!! po adresie. Na koncu prosty tekst.
+async fun sw_navigate(req, path: Str) [
+    let is_blue = str_ends_with(path, "/blue") or str_ends_with(path, "/blue.html")
+    let first = sw_offline_main
+    let second = sw_offline_blue
+    if is_blue [
+        first = sw_offline_blue
+        second = sw_offline_main
+    ]
+    let res = await fetch(req, u_obj("{\"cache\":\"no-store\"}")).catch(sw_null)
+    if res != null [
+        end res
+    ]
+    let a = await u_call(caches, "match", [first])
+    if a [
+        end a
+    ]
+    let b = await u_call(caches, "match", [second])
+    if b [
+        end b
+    ]
+    end Reflect.construct(Response, ["Offline", u_obj("{\"status\":503,\"headers\":{\"Content-Type\":\"text/plain; charset=utf-8\"}}")])
+]
+
+fun sw_put(req, copy, cache) [
+    cache.put(req, copy)
+]
+
+!!! Pliki statyczne (css, js, obrazki): siec, z zapisem do cache; offline - kopia z cache.
+async fun sw_static(req) [
+    let res = await fetch(req).catch(sw_null)
+    if res != null [
+        if res.ok [
+            !! u_call: `res.clone()` kompilator zamieniłby na gleboka kopie (hks_clone)
+            let copy = u_call(res, "clone", [])
+            caches.open(sw_cache).then(sw_put.bind(null, req, copy))
+        ]
+        end res
+    ]
+    let hit = await u_call(caches, "match", [req])
+    if hit [
+        end hit
+    ]
+    end Response.error()
+]
+
+fun sw_on_fetch(event) [
+    let req = event.request
+    if req.method != "GET" [
+        end 0
+    ]
+    let url = Reflect.construct(URL, [req.url])
+    !! zewnetrzne (Ecosia, ikony) - zostawiamy przegladarce
+    if url.origin != globalThis.location.origin [
+        end 0
+    ]
+    !! test lacznosci z 404.html - ma isc prosto do sieci
+    if url.searchParams.has("probe") [
+        end 0
+    ]
+    if req.mode == "navigate" [
+        event.respondWith(sw_navigate(req, url.pathname))
+        end 0
+    ]
+    event.respondWith(sw_static(req))
+]
+
+let sw_reg_install = globalThis.addEventListener("install", sw_on_install)
+let sw_reg_activate = globalThis.addEventListener("activate", sw_on_activate)
+let sw_reg_fetch = globalThis.addEventListener("fetch", sw_on_fetch)
