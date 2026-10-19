@@ -18,6 +18,10 @@ concurrency:
   group: pages
   cancel-in-progress: false
 
+env:
+  BIT_URL: https://github.com/HackerOS-Linux-System/bit/releases/download/v0.2/bit
+  HACKERC_URL: https://github.com/HackerOS-Linux-System/HackerScript/releases/download/v0.5/hackerc
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,17 +29,44 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Strona jest w całości w HackerScript (use <mode:website>) - nie ma już TypeScriptu,
+      # npm ani esbuilda. Potrzebne są: bit (uruchamia polecenie `site` z Bit.hk),
+      # hackerc (kompilator HackerScript) i Node.js (uruchamia scripts/build.hcs po kompilacji).
+      - name: Download bit
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL --retry 3 -o "$HOME/.local/bin/bit" "$BIT_URL"
+          chmod +x "$HOME/.local/bin/bit"
+
+      - name: Download hackerc
+        run: |
+          curl -fsSL --retry 3 -o "$HOME/.local/bin/hackerc" "$HACKERC_URL"
+          chmod +x "$HOME/.local/bin/hackerc"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - name: Install dependencies
-        run: npm ci
+      - name: Versions
+        run: |
+          bit --version
+          hackerc --version || true
+          node --version
 
-      - name: Build (typecheck + bundle TypeScript -> dist/)
-        run: npm run build
+      - name: Build site (bit site -> hackerc -> dist/)
+        run: bit site
+
+      - name: Sanity-check the build output
+        run: |
+          set -e
+          for f in index.html script.js blue.html blue.js 404.html offline.html sw.js; do
+            test -s "dist/$f" || { echo "::error::missing dist/$f"; exit 1; }
+          done
+          ! grep -q '__BUILD_ID__' dist/sw.js || { echo "::error::__BUILD_ID__ left in sw.js"; exit 1; }
+          grep -q 'hackeros-offline' dist/404.html dist/offline.html
+          du -sh dist
 
       - name: Setup Pages
         if: github.event_name != 'pull_request'
