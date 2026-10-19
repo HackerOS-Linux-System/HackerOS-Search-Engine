@@ -1,0 +1,134 @@
+let guard_ls_root = "hackeros_root"
+let guard_ls_variant = "hackeros_variant"
+let guard_ls_last_online = "hackeros_last_online"
+let guard_ls_html_legacy = "hackeros_offline_html"
+let guard_marker = "hackeros-offline"
+
+let guard_file = ""
+let guard_fallback = ""
+let guard_html_key = ""
+let guard_shown = false
+let guard_checking = false
+
+fun guard_true(x) [
+    end true
+]
+
+fun guard_false(x) [
+    end false
+]
+
+fun guard_null(x) [
+    end null
+]
+
+fun guard_mark_online() [
+    u_ls_set(guard_ls_last_online, String(Date.now()))
+]
+
+!!! Lacznosc: navigator.onLine + prawdziwe zapytanie HEAD (parametr "probe" omija Service Worker).
+async fun guard_probe() -> Bool [
+    if not navigator.onLine [
+        end false
+    ]
+    if location.protocol == "file:" [
+        end true
+    ]
+    let ctl = Reflect.construct(AbortController, [])
+    let tm = set_timeout(ctl.abort.bind(ctl), 3500)
+    let opts = u_obj("{\"method\":\"HEAD\",\"cache\":\"no-store\"}")
+    opts.signal = ctl.signal
+    let good = await fetch(location.pathname + "?probe=" + Date.now(), opts).then(guard_true, guard_false)
+    clearTimeout(tm)
+    end good
+]
+
+!!! Zapisuje kopie ekranu offline TEGO wariantu w localStorage (odswiezana przy kazdym wejsciu online).
+async fun guard_save_page() [
+    if location.protocol == "file:" or not navigator.onLine [
+        end 0
+    ]
+    let res = await fetch(guard_file, u_obj("{\"cache\":\"no-cache\"}")).catch(guard_null)
+    if res == null or not res.ok [
+        end 0
+    ]
+    let text = await res.text().catch(guard_null)
+    !! sprawdzamy znacznik, zeby nie zapisac przypadkiem strony bledu
+    if text != null and str_contains(text, guard_marker) [
+        u_ls_set(guard_html_key, text)
+    ]
+]
+
+fun guard_show_offline() [
+    if guard_shown [
+        end 0
+    ]
+    guard_shown = true
+    let saved = u_ls_get(guard_html_key)
+    if saved != null and saved != "" [
+        !! ekran offline z pamieci przegladarki - bez dotykania sieci
+        document.open()
+        document.write(saved)
+        document.close()
+        end 0
+    ]
+    location.href = guard_fallback
+]
+
+async fun guard_check() [
+    if guard_checking or guard_shown [
+        end 0
+    ]
+    guard_checking = true
+    let good = await guard_probe()
+    guard_checking = false
+    if good [
+        guard_mark_online()
+        end 0
+    ]
+    guard_show_offline()
+]
+
+fun guard_on_offline(e) [
+    guard_check()
+]
+
+fun guard_on_online(e) [
+    guard_mark_online()
+]
+
+!!! Wi-Fi bez dostepu do internetu nie wywoluje zdarzenia "offline" - co 30 s cicho sprawdzamy lacznosc.
+fun guard_tick() [
+    if not document.hidden [
+        guard_check()
+    ]
+]
+
+!!! variant: "main" | "blue"; root_url: adres strony glownej tego wariantu.
+fun guard_init(variant: Str, root_url: Str) [
+    let root_key = "hackeros_root_main"
+    guard_file = "404.html"
+    guard_fallback = "404.html?lost"
+    guard_html_key = "hackeros_offline_html_main"
+    if variant == "blue" [
+        root_key = "hackeros_root_blue"
+        guard_file = "offline.html"
+        guard_fallback = "offline.html"
+        guard_html_key = "hackeros_offline_html_blue"
+    ]
+
+    u_ls_set(guard_ls_root, root_url)
+    u_ls_set(root_key, root_url)
+    u_ls_set(guard_ls_variant, variant)
+    u_ls_remove(guard_ls_html_legacy)
+
+    guard_mark_online()
+    guard_save_page()
+
+    window.addEventListener("offline", guard_on_offline)
+    window.addEventListener("online", guard_on_online)
+    if not navigator.onLine [
+        guard_check()
+    ]
+    setInterval(guard_tick, 30000)
+]
