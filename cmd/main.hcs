@@ -1,0 +1,808 @@
+use <mode:website>
+include <lib/util>
+include <lib/guard>
+include <lib/idle>
+
+!!! HackerOS Search - strona glowna (index.html), w calosci w HackerScript (mode:website).
+!!! Port 1:1 z index.html + styles.css + src/script.ts. Wszystkie nazwy z prefiksem `mn_`.
+!!! Szkielet generuje hackerc; wyglad - blok style, tresc - main() i DOM bridge.
+
+style {
+    /* skeleton hackerc ustawia #app { max-width } - kontener ma byc przezroczysty dla ukladu body */
+    #app { display: contents; max-width: none; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Arial', sans-serif; }
+
+* {
+margin: 0;
+padding: 0;
+box-sizing: border-box;
+font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Arial', sans-serif;
+}
+
+body {
+    background: linear-gradient(135deg, #1E293B 0%, #334155 100%);
+    color: #F3F4F6;
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow-x: hidden;
+    transition: background 0.3s ease;
+}
+
+/* Motyw kosmiczny */
+body.space-theme {
+    background: linear-gradient(135deg, #000000 0%, #000022 100%);
+}
+
+/* Motyw cyber */
+body.cyber-theme {
+    background: linear-gradient(135deg, #0a0f1e 0%, #1a0b2e 100%);
+}
+
+/* Motyw matrix */
+body.matrix-theme {
+    background: linear-gradient(135deg, #000000 0%, #001a00 100%);
+    color: #00ff66;
+}
+
+/* Motyw sunset */
+body.sunset-theme {
+    background: linear-gradient(135deg, #2b0f1e 0%, #7a2f1f 50%, #c9600f 100%);
+}
+
+canvas#particles {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -10;
+    pointer-events: none;
+}
+
+.logo-container {
+    position: fixed;
+    top: 1.5rem;
+    left: 1.5rem;
+    z-index: 1000;
+}
+
+.logo-container a {
+    display: block;
+    transition: transform 0.2s ease;
+}
+
+.logo-container a:hover {
+    transform: scale(1.05);
+}
+
+.logo-container img {
+    height: 2.5rem;
+    width: auto;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+}
+
+.theme-toggle {
+    position: fixed;
+    top: 1.5rem;
+    right: 1.5rem;
+    z-index: 1000;
+    cursor: pointer;
+    color: #F3F4F6;
+    font-size: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 0.5rem;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.theme-toggle:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(1.02);
+}
+
+body.matrix-theme .theme-toggle {
+    color: #00ff66;
+    box-shadow: 0 0 0 1px rgba(0, 255, 102, 0.2) inset;
+}
+
+body.matrix-theme .theme-toggle:hover {
+    background: rgba(0, 255, 102, 0.15);
+    box-shadow: 0 0 8px rgba(0, 255, 102, 0.4);
+}
+
+body.sunset-theme .theme-toggle {
+    color: #ffe4b8;
+}
+
+body.sunset-theme .theme-toggle:hover {
+    background: rgba(255, 179, 71, 0.2);
+    box-shadow: 0 0 8px rgba(255, 179, 71, 0.4);
+}
+
+.main-container {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    position: relative;
+    z-index: 1;
+}
+
+.search-container {
+    width: 100%;
+    max-width: 36rem;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 9999px;
+    padding: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: box-shadow 0.2s ease, background 0.3s ease;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    backdrop-filter: blur(8px);
+}
+
+.search-container:hover,
+.search-container:focus-within {
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.1);
+}
+
+body.matrix-theme .search-container {
+    border: 1px solid rgba(0, 255, 102, 0.25);
+}
+
+body.matrix-theme .search-container:hover,
+body.matrix-theme .search-container:focus-within {
+    box-shadow: 0 6px 16px rgba(0, 255, 102, 0.25);
+}
+
+body.sunset-theme .search-container {
+    border: 1px solid rgba(255, 179, 71, 0.25);
+}
+
+body.sunset-theme .search-container:hover,
+body.sunset-theme .search-container:focus-within {
+    box-shadow: 0 6px 16px rgba(255, 179, 71, 0.25);
+}
+
+.search-form {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.search-input {
+    width: 100%;
+    padding: 1rem 3.5rem 1rem 1.5rem;
+    background: transparent;
+    border: none;
+    color: #F3F4F6;
+    font-size: 1.125rem;
+    outline: none;
+    transition: box-shadow 0.2s ease;
+}
+
+.search-input:focus {
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.2);
+}
+
+.search-input::placeholder {
+    color: #9CA3AF;
+}
+
+.search-button {
+    position: absolute;
+    right: 0.75rem;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 0.5rem;
+    transition: transform 0.2s ease;
+}
+
+.search-button:hover,
+.search-button:focus {
+    transform: scale(1.1);
+}
+
+.search-button img {
+    width: 1.25rem;
+    height: 1.25rem;
+    filter: invert(0.7);
+    transition: filter 0.2s ease;
+}
+
+.search-button:hover img,
+.search-button:focus img {
+    filter: invert(1);
+}
+
+.bottom-left-link {
+    position: fixed;
+    bottom: 1rem;
+    left: 1.5rem;
+    z-index: 1000;
+    font-size: 0.875rem;
+}
+
+.bottom-left-link a {
+    color: #D1D5DB;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.bottom-left-link a:hover {
+    color: #FFFFFF;
+}
+
+/* Styl dla motywu cyber - linki */
+body.cyber-theme .bottom-left-link a {
+    color: #0ff;
+    text-shadow: 0 0 3px #0ff;
+}
+
+body.cyber-theme .bottom-left-link a:hover {
+    color: #f0f;
+    text-shadow: 0 0 5px #f0f;
+}
+
+/* Styl dla motywu matrix - linki */
+body.matrix-theme .bottom-left-link a {
+    color: #00ff66;
+    text-shadow: 0 0 4px #00ff66;
+}
+
+body.matrix-theme .bottom-left-link a:hover {
+    color: #aaffcc;
+    text-shadow: 0 0 6px #00ff66;
+}
+
+/* Styl dla motywu sunset - linki */
+body.sunset-theme .bottom-left-link a {
+    color: #ffb347;
+    text-shadow: 0 0 4px rgba(255, 140, 0, 0.5);
+}
+
+body.sunset-theme .bottom-left-link a:hover {
+    color: #fff1d6;
+    text-shadow: 0 0 6px rgba(255, 140, 0, 0.7);
+}
+
+footer {
+    background: transparent;
+    padding: 1rem;
+    text-align: center;
+    color: #9CA3AF;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+footer a {
+    color: #D1D5DB;
+    text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+footer a:hover {
+    color: #FFFFFF;
+}
+
+body.cyber-theme footer a {
+    color: #0ff;
+}
+
+body.cyber-theme footer a:hover {
+    color: #f0f;
+}
+
+body.matrix-theme footer {
+    color: #00cc55;
+    border-top: 1px solid rgba(0, 255, 102, 0.2);
+}
+
+body.matrix-theme footer a {
+    color: #00ff66;
+}
+
+body.matrix-theme footer a:hover {
+    color: #aaffcc;
+}
+
+body.sunset-theme footer {
+    color: #ffd9ad;
+    border-top: 1px solid rgba(255, 179, 71, 0.25);
+}
+
+body.sunset-theme footer a {
+    color: #ffb347;
+}
+
+body.sunset-theme footer a:hover {
+    color: #fff1d6;
+}
+
+@media (max-width: 600px) {
+    .search-container {
+        max-width: 90%;
+    }
+    .search-input {
+        font-size: 1rem;
+        padding: 0.875rem 3rem 0.875rem 1rem;
+    }
+    .search-button img {
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+    footer {
+        font-size: 0.75rem;
+    }
+    .logo-container {
+        top: 1rem;
+        left: 1rem;
+    }
+    .logo-container img {
+        height: 2rem;
+    }
+    .bottom-left-link {
+        left: 1rem;
+        font-size: 0.75rem;
+    }
+    .theme-toggle {
+        top: 1rem;
+        right: 1rem;
+        font-size: 0.875rem;
+        padding: 0.375rem 0.75rem;
+    }
+}
+
+@media (min-width: 1200px) {
+    .search-container {
+        max-width: 48rem;
+    }
+}
+}
+
+!! ------------------------------------------------------------------ motywy
+let mn_themes = ["default", "space", "cyber", "matrix", "sunset"]
+let mn_theme = "default"
+
+!! wlasciwosci biezacego motywu (odpowiednik ThemeProps)
+let mn_count = 50
+let mn_size_min = 1.0
+let mn_size_max = 2.0
+let mn_speed_min = -0.15
+let mn_speed_max = 0.15
+let mn_opacity_min = 0.2
+let mn_opacity_max = 0.4
+let mn_use_hue = true
+let mn_hue_min = 200.0
+let mn_hue_max = 230.0
+let mn_fixed_hue = 0.0
+let mn_connect = true
+let mn_line_dist = 100.0
+let mn_glow = false
+let mn_vfall = false
+
+let mn_canvas = null
+let mn_ctx = null
+let mn_input = null
+let mn_particles: List<MnParticle> = []
+let mn_mouse_x = 0.0
+let mn_mouse_y = 0.0
+let mn_has_mouse = false
+let mn_mouse_radius = 100.0
+
+fun mn_is_theme(v) -> Bool [
+    for t in mn_themes [
+        if t == v [
+            end true
+        ]
+    ]
+    end false
+]
+
+fun mn_load_theme() -> Str [
+    let saved = u_ls_get("theme")
+    if saved != null and mn_is_theme(saved) [
+        end saved
+    ]
+    end "default"
+]
+
+fun mn_set_props(theme: Str) [
+    mn_fixed_hue = 0.0
+    mn_hue_min = 0.0
+    mn_hue_max = 360.0
+    mn_connect = false
+    mn_vfall = false
+    if theme == "space" [
+        mn_count = 200
+        mn_size_min = 0.5
+        mn_size_max = 1.5
+        mn_speed_min = -0.2
+        mn_speed_max = 0.2
+        mn_opacity_min = 0.4
+        mn_opacity_max = 0.6
+        mn_use_hue = false
+        mn_glow = true
+    ] elif theme == "cyber" [
+        mn_count = 120
+        mn_size_min = 0.8
+        mn_size_max = 2.2
+        mn_speed_min = -0.25
+        mn_speed_max = 0.25
+        mn_opacity_min = 0.5
+        mn_opacity_max = 0.9
+        mn_use_hue = true
+        mn_hue_min = 180.0
+        mn_hue_max = 300.0
+        mn_connect = true
+        mn_line_dist = 120.0
+        mn_glow = true
+    ] elif theme == "matrix" [
+        mn_count = 150
+        mn_size_min = 0.6
+        mn_size_max = 1.8
+        mn_speed_min = 0.4
+        mn_speed_max = 1.4
+        mn_opacity_min = 0.4
+        mn_opacity_max = 0.9
+        mn_use_hue = false
+        mn_fixed_hue = 120.0
+        mn_glow = true
+        mn_vfall = true
+    ] elif theme == "sunset" [
+        mn_count = 90
+        mn_size_min = 1.0
+        mn_size_max = 2.6
+        mn_speed_min = -0.18
+        mn_speed_max = 0.18
+        mn_opacity_min = 0.3
+        mn_opacity_max = 0.7
+        mn_use_hue = true
+        mn_hue_min = 10.0
+        mn_hue_max = 45.0
+        mn_connect = true
+        mn_line_dist = 110.0
+        mn_glow = true
+    ] else [
+        mn_count = 50
+        mn_size_min = 1.0
+        mn_size_max = 2.0
+        mn_speed_min = -0.15
+        mn_speed_max = 0.15
+        mn_opacity_min = 0.2
+        mn_opacity_max = 0.4
+        mn_use_hue = true
+        mn_hue_min = 200.0
+        mn_hue_max = 230.0
+        mn_connect = true
+        mn_line_dist = 100.0
+        mn_glow = false
+    ]
+]
+
+!! ------------------------------------------------------------------ czasteczki
+struct MnParticle [
+    x: Float,
+    y: Float,
+    size: Float,
+    base_size: Float,
+    speed_x: Float,
+    speed_y: Float,
+    opacity: Float,
+    hue: Float,
+    glow: Bool
+]
+
+fun mn_new_particle() -> MnParticle [
+    let size = u_rnd(mn_size_min, mn_size_max)
+    let sx = u_rnd(mn_speed_min, mn_speed_max)
+    let sy = u_rnd(mn_speed_min, mn_speed_max)
+    let hue = mn_fixed_hue
+    if mn_use_hue [
+        hue = u_rnd(mn_hue_min, mn_hue_max)
+    ]
+    if mn_vfall [
+        sx = 0.0
+        sy = u_rnd(mn_speed_min, mn_speed_max)
+    ]
+    end MnParticle(Math.random() * mn_canvas.width, Math.random() * mn_canvas.height, size, size, sx, sy, u_rnd(mn_opacity_min, mn_opacity_max), hue, mn_glow)
+]
+
+impl MnParticle [
+    fun update(self) [
+        self.x = self.x + self.speed_x
+        self.y = self.y + self.speed_y
+
+        !! motyw matrix: czastki spadaja i wracaja na gore
+        if mn_vfall and self.y > mn_canvas.height [
+            self.y = 0
+            self.x = Math.random() * mn_canvas.width
+        ]
+
+        !! spadek rozmiaru/opacity tylko dla domyslnego motywu
+        if mn_theme == "default" [
+            if self.size > 0.5 [
+                self.size = self.size - 0.003
+            ]
+            if self.opacity > 0.2 [
+                self.opacity = self.opacity - 0.0003
+            ]
+        ]
+
+        !! interakcja z myszka tylko dla domyslnego
+        if mn_theme == "default" and mn_has_mouse [
+            let dx = mn_mouse_x - self.x
+            let dy = mn_mouse_y - self.y
+            let distance = Math.sqrt(dx * dx + dy * dy)
+            if distance < mn_mouse_radius [
+                let force = (mn_mouse_radius - distance) / mn_mouse_radius
+                self.speed_x = self.speed_x + dx * force * 0.01
+                self.speed_y = self.speed_y + dy * force * 0.01
+                self.size = self.base_size + force * 1.5
+            ]
+        ]
+
+        !! odbijanie od krawedzi
+        if self.x < 0 or self.x > mn_canvas.width [
+            self.speed_x = self.speed_x * -1
+        ]
+        if self.y < 0 or self.y > mn_canvas.height [
+            self.speed_y = self.speed_y * -1
+        ]
+    ]
+
+    fun draw(self) [
+        if mn_use_hue [
+            mn_ctx.fillStyle = "hsla(" + self.hue + ", 70%, 60%, " + self.opacity + ")"
+        ] elif mn_fixed_hue != 0 [
+            mn_ctx.fillStyle = "hsla(" + self.hue + ", 90%, 55%, " + self.opacity + ")"
+        ] else [
+            mn_ctx.fillStyle = "hsla(0, 0%, 100%, " + self.opacity + ")"
+        ]
+
+        if self.glow [
+            mn_ctx.shadowBlur = 6
+            if mn_use_hue [
+                mn_ctx.shadowColor = "hsl(" + self.hue + ", 80%, 60%)"
+            ] elif mn_fixed_hue != 0 [
+                mn_ctx.shadowColor = "hsl(" + self.hue + ", 90%, 55%)"
+            ] else [
+                mn_ctx.shadowColor = "white"
+            ]
+        ] else [
+            mn_ctx.shadowBlur = 0
+        ]
+
+        mn_ctx.beginPath()
+        mn_ctx.arc(self.x, self.y, self.size, 0, Math.PI * 2)
+        mn_ctx.fill()
+    ]
+]
+
+fun mn_connect_particles() [
+    if not mn_connect [
+        end 0
+    ]
+    let n = mn_particles.len()
+    let i = 0
+    while i < n [
+        let j = i + 1
+        while j < n [
+            let dx = mn_particles[i].x - mn_particles[j].x
+            let dy = mn_particles[i].y - mn_particles[j].y
+            let distance = Math.sqrt(dx * dx + dy * dy)
+            if distance < mn_line_dist [
+                let opacity = (1 - distance / mn_line_dist) * 0.2
+                if mn_use_hue [
+                    mn_ctx.strokeStyle = "hsla(" + mn_particles[i].hue + ", 70%, 60%, " + opacity + ")"
+                ] else [
+                    mn_ctx.strokeStyle = "rgba(255, 255, 255, " + opacity + ")"
+                ]
+                mn_ctx.lineWidth = 0.5
+                mn_ctx.beginPath()
+                mn_ctx.moveTo(mn_particles[i].x, mn_particles[i].y)
+                mn_ctx.lineTo(mn_particles[j].x, mn_particles[j].y)
+                mn_ctx.stroke()
+            ]
+            j = j + 1
+        ]
+        i = i + 1
+    ]
+]
+
+fun mn_init_particles() [
+    if mn_canvas == null [
+        end 0
+    ]
+    mn_particles = []
+    mn_set_props(mn_theme)
+    let i = 0
+    while i < mn_count [
+        mn_particles.push(mn_new_particle())
+        i = i + 1
+    ]
+]
+
+fun mn_animate(t) [
+    if mn_canvas == null or mn_ctx == null [
+        end 0
+    ]
+    mn_ctx.clearRect(0, 0, mn_canvas.width, mn_canvas.height)
+    let i = 0
+    while i < mn_particles.len() [
+        mn_particles[i].update()
+        mn_particles[i].draw()
+        !! odswiezanie czastek jesli za male (tylko default)
+        if mn_theme == "default" and (mn_particles[i].size <= 0.5 or mn_particles[i].opacity <= 0.2) [
+            mn_particles.remove(i)
+            mn_particles.push(mn_new_particle())
+            i = i - 1
+        ]
+        i = i + 1
+    ]
+    mn_connect_particles()
+    requestAnimationFrame(mn_animate)
+]
+
+fun mn_handle_resize(e) [
+    if mn_canvas == null [
+        end 0
+    ]
+    mn_canvas.width = window.innerWidth
+    mn_canvas.height = window.innerHeight
+    mn_init_particles()
+]
+
+!! ------------------------------------------------------------------ przelacznik motywow (5 motywow)
+fun mn_apply_theme(theme: Str) [
+    mn_theme = theme
+    u_call(document.body.classList, "remove", ["space-theme", "cyber-theme", "matrix-theme", "sunset-theme"])
+    if theme != "default" [
+        document.body.classList.add(theme + "-theme")
+    ]
+    mn_init_particles()
+    u_ls_set("theme", theme)
+]
+
+fun mn_on_toggle(e) [
+    let idx = 0
+    let i = 0
+    while i < mn_themes.len() [
+        if mn_themes[i] == mn_theme [
+            idx = i
+        ]
+        i = i + 1
+    ]
+    mn_apply_theme(mn_themes[(idx + 1) % mn_themes.len()])
+]
+
+fun mn_on_mouse_move(e) [
+    mn_mouse_x = e.clientX
+    mn_mouse_y = e.clientY
+    mn_has_mouse = true
+]
+
+fun mn_on_mouse_out(e) [
+    mn_has_mouse = false
+]
+
+!! ------------------------------------------------------------------ formularz i klawiatura
+fun mn_on_submit(e) [
+    let query = mn_input.value.trim()
+    if query == "" [
+        e.preventDefault()
+        alert("Proszę wpisać frazę wyszukiwania!")
+    ]
+]
+
+fun mn_on_keydown(e) [
+    if e.key == "Enter" and document.activeElement != mn_input [
+        mn_input.focus()
+    ]
+]
+
+fun mn_sw_failed(err) [
+    console.warn("Service Worker registration failed:", err)
+]
+
+!! ------------------------------------------------------------------ szkielet strony (body z index.html)
+let mn_logo_url = "https://raw.githubusercontent.com/HackerOS-Linux-System/HackerOS-Website/main/HackerOS.png"
+let mn_site_url = "https://hackeros-linux-system.github.io/HackerOS-Website/"
+
+fun mn_footer_html(pl: Bool) -> Str [
+    if pl [
+        end u_join(['Powered by <a href="https://www.ecosia.org" target="_blank" aria-label="Strona Ecosia">Ecosia</a> |', ' <a href="', mn_site_url, '" target="_blank" aria-label="Strona HackerOS">HackerOS</a> | © 2026'])
+    ]
+    end u_join(['Powered by <a href="https://www.ecosia.org" target="_blank" aria-label="Ecosia Website">Ecosia</a> |', ' <a href="', mn_site_url, '" target="_blank" aria-label="HackerOS Website">HackerOS</a> | © 2026'])
+]
+
+fun main() [
+    let pl = u_is_pl()
+    page_title("HackerOS Search")
+    u_attrs(u_el(document.head, "link", "", ""), ["rel", "icon", "type", "image/png", "href", mn_logo_url])
+
+    let body = document.body
+    mn_canvas = u_attrs(u_el(body, "canvas", "", ""), ["id", "particles"])
+
+    let lc = u_el(body, "div", "logo-container", "")
+    let la = u_attrs(u_el(lc, "a", "", ""), ["href", mn_site_url, "target", "_blank"])
+    u_attrs(u_el(la, "img", "", ""), ["src", mn_logo_url, "alt", "HackerOS Logo"])
+
+    let toggle = u_attrs(u_el(body, "div", "theme-toggle", "Change"), ["id", "themeToggle"])
+
+    let section = u_el(body, "section", "main-container", "")
+    let sc = u_el(section, "div", "search-container", "")
+    let form = u_attrs(u_el(sc, "form", "search-form", ""), ["action", "https://www.ecosia.org/search", "method", "GET", "role", "search", "aria-label", "Wyszukiwarka Ecosia"])
+    mn_input = u_attrs(u_el(form, "input", "search-input", ""), ["type", "text", "name", "q", "placeholder", "Wyszukaj w Ecosia...", "required", "", "aria-label", "Wprowadź frazę wyszukiwania"])
+    let btn = u_attrs(u_el(form, "button", "search-button", ""), ["type", "submit", "aria-label", "Szukaj"])
+    u_attrs(u_el(btn, "img", "", ""), ["src", "https://cdn-icons-png.flaticon.com/512/622/622669.png", "alt", "Ikona wyszukiwania"])
+
+    let bl = u_el(body, "div", "bottom-left-link", "")
+    let bla = u_attrs(u_el(bl, "a", "", "Discover our ecosystem"), ["href", mn_site_url + "tools-docs/index.html", "aria-label", "Discover our ecosystem"])
+    let footer = u_el(body, "footer", "", "")
+    footer.innerHTML = mn_footer_html(true)
+
+    !! --- animacja czasteczek ---
+    mn_ctx = mn_canvas.getContext("2d")
+    mn_theme = mn_load_theme()
+    mn_set_props(mn_theme)
+
+    toggle.addEventListener("click", mn_on_toggle)
+
+    !! mysz tylko dla domyslnego motywu
+    document.addEventListener("mousemove", mn_on_mouse_move)
+    document.addEventListener("mouseout", mn_on_mouse_out)
+    window.addEventListener("resize", mn_handle_resize)
+
+    if mn_ctx != null [
+        mn_handle_resize(null)
+        mn_apply_theme(mn_theme)
+        mn_animate(0)
+    ] else [
+        console.warn("Canvas not supported")
+    ]
+
+    !! --- walidacja formularza i dostepnosc z klawiatury ---
+    form.addEventListener("submit", mn_on_submit)
+    document.addEventListener("keydown", mn_on_keydown)
+
+    !! --- wykrywanie jezyka ---
+    if not pl [
+        document.documentElement.lang = "en"
+        mn_input.placeholder = "Search with Ecosia..."
+        footer.innerHTML = mn_footer_html(false)
+        if bla.textContent == "Odkryj nasz ekosystem" [
+            bla.textContent = "Discover our ecosystem"
+        ]
+    ] else [
+        document.documentElement.lang = "pl"
+        if bla.textContent == "Discover our ecosystem" [
+            bla.textContent = "Odkryj nasz ekosystem"
+        ]
+    ]
+
+    !! --- offline: zapis stanu (adres, kopia ekranu) w localStorage + ekran 404.html ---
+    guard_init("main", Reflect.construct(URL, ["./", location.href]).href)
+
+    !! --- zdarzenia bezczynnosci: 5 min UFO, 10 min strzelec, 15 min samolot ---
+    idle_init()
+
+    !! Service Worker (sw.js) podstawia ekran offline, gdy strona nie moze sie zaladowac bez internetu.
+    !! Wymaga HTTPS lub localhost.
+    let sw_ok = location.protocol == "https:" or location.hostname == "localhost" or location.hostname == "127.0.0.1"
+    if navigator.serviceWorker and sw_ok [
+        navigator.serviceWorker.register("sw.js").catch(mn_sw_failed)
+    ]
+]
