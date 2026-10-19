@@ -1,0 +1,1419 @@
+use <mode:website>
+include <lib/util>
+
+!!! 404.html / ekran offline zwyklej strony HackerOS Search (HackerScript, mode:website).
+!!! Port 1:1 z 404.html + src/offline.ts. Wynik (app.js) jest wklejany INLINE do
+!!! 404.html przez skrypt budowania - strona musi dzialac samodzielnie, bez internetu,
+!!! pod dowolna sciezka (GitHub Pages podaje ja jako 404 dla nieistniejacych adresow).
+!!! Wszystkie nazwy z prefiksem `p4_`.
+
+style {
+    /* skeleton hackerc ustawia body { line-height: 1.5 } i #app { max-width } - oryginal tego nie mial */
+    #app { display: contents; max-width: none; margin: 0; padding: 0; }
+    body { line-height: normal; }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SFMono-Regular', Consolas, 'Courier New', monospace;
+            --bg1: #1E293B; --bg2: #334155;
+            --fg: #F3F4F6; --dim: #9CA3AF;
+            --acc: #60a5fa; --acc2: #a78bfa; --warn: #f87171; --ok: #4ade80;
+            --glow: rgba(96, 165, 250, .45);
+            --scan: .10;
+        }
+        body.space-theme  { --bg1:#000000; --bg2:#000022; --fg:#e8eeff; --dim:#8b97c4; --acc:#9bb8ff; --acc2:#ffffff; --warn:#ff5a5a; --glow:rgba(155,184,255,.5); --scan:.06; }
+        body.cyber-theme  { --bg1:#0a0f1e; --bg2:#1a0b2e; --fg:#e6faff; --dim:#7aa6b8; --acc:#00ffff; --acc2:#ff00ff; --warn:#ff2a6d; --glow:rgba(0,255,255,.5); --scan:.18; }
+        body.matrix-theme { --bg1:#000000; --bg2:#001a00; --fg:#00ff66; --dim:#00a844; --acc:#00ff66; --acc2:#aaffcc; --warn:#ff4d4d; --ok:#aaffcc; --glow:rgba(0,255,102,.55); --scan:.22; }
+        body.sunset-theme { --bg1:#2b0f1e; --bg2:#c9600f; --fg:#ffe4b8; --dim:#d9a77a; --acc:#ffb347; --acc2:#ff5e7e; --warn:#ff4d6d; --glow:rgba(255,179,71,.5); --scan:.14; }
+
+        html, body { min-height: 100%; }
+        body {
+            font-family: var(--mono);
+            color: var(--fg);
+            background: linear-gradient(135deg, var(--bg1) 0%, var(--bg2) 100%);
+            background-attachment: fixed;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+            transition: background .3s ease;
+        }
+        body.sunset-theme { background: linear-gradient(135deg, #2b0f1e 0%, #7a2f1f 50%, #c9600f 100%); background-attachment: fixed; }
+
+        canvas#bg { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -10; pointer-events: none; }
+        body.matrix-theme canvas#bg { opacity: .85; }
+
+        /* --- nakładki: szum, linie skanujące, winieta, "rozdarcia" ekranu --- */
+        canvas#noise { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 40; pointer-events: none; opacity: .06; image-rendering: pixelated; mix-blend-mode: overlay; transition: opacity .1s; }
+        .scan { position: fixed; inset: 0; z-index: 50; pointer-events: none;
+            background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0, rgba(0,0,0,0) 2px, rgba(0,0,0,var(--scan)) 3px); }
+        .scan::after { content: ''; position: absolute; left: 0; right: 0; top: -20vh; height: 18vh;
+            background: linear-gradient(to bottom, transparent, rgba(255,255,255,.05), transparent);
+            animation: roll 7s linear infinite; }
+        .vignette { position: fixed; inset: 0; z-index: 45; pointer-events: none;
+            background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.55) 100%); }
+        #tears { position: fixed; inset: 0; z-index: 46; pointer-events: none; overflow: hidden; }
+        .tear { position: absolute; left: 0; width: 100%; display: none; background: var(--acc); mix-blend-mode: screen; opacity: .18; }
+        .tear.alt { background: var(--acc2); }
+        body.burst .tear { display: block; }
+
+        /* --- logo i przełącznik motywu (jak na stronie głównej) --- */
+        .logo { position: fixed; top: 1.5rem; left: 1.5rem; z-index: 1000; display: block; transition: transform .2s ease; }
+        .logo:hover { transform: scale(1.05); }
+        .logo img { height: 2.5rem; width: auto; display: block; filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); }
+        .theme-toggle { position: fixed; top: 1.5rem; right: 1.5rem; z-index: 1000; cursor: pointer; user-select: none;
+            color: var(--fg); font-family: var(--mono); font-size: 1rem; padding: .5rem 1rem;
+            background: rgba(255,255,255,.1); border: 0; border-radius: .5rem; transition: background .2s, transform .1s, box-shadow .2s; }
+        .theme-toggle:hover { background: rgba(255,255,255,.2); transform: scale(1.02); box-shadow: 0 0 10px var(--glow); }
+        .theme-toggle:focus-visible, .btn:focus-visible, .logo:focus-visible { outline: 2px solid var(--acc); outline-offset: 3px; }
+
+        /* --- scena --- */
+        .stage { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            gap: 1.25rem; padding: 6rem 1rem 2rem; text-align: center; position: relative; z-index: 1;
+            animation: flicker 6s infinite; }
+
+        .chip { display: inline-flex; align-items: center; gap: .55rem; padding: .35rem .9rem;
+            font-size: .8rem; letter-spacing: .12em; border: 1px solid color-mix(in srgb, var(--warn) 55%, transparent);
+            color: var(--warn); border-radius: 9999px; background: rgba(0,0,0,.35); backdrop-filter: blur(6px); }
+        .chip .dot { width: .55rem; height: .55rem; border-radius: 50%; background: currentColor; box-shadow: 0 0 8px currentColor; animation: pulse 1s infinite; }
+        .chip.is-ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 55%, transparent); }
+        .chip.is-check { color: var(--acc); border-color: color-mix(in srgb, var(--acc) 55%, transparent); }
+        .chip.is-404 { color: var(--acc2); border-color: color-mix(in srgb, var(--acc2) 55%, transparent); }
+
+        /* --- główny glitch --- */
+        .glitch { position: relative; max-width: 100%; font-size: clamp(1.9rem, 9vw, 5.5rem); font-weight: 900; letter-spacing: .05em;
+            line-height: 1.05; text-transform: uppercase; color: var(--fg); text-shadow: 0 0 22px var(--glow); cursor: pointer; word-break: break-word; }
+        .glitch::before, .glitch::after { content: attr(data-text); position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+        .glitch::before { color: var(--acc);  transform: translateX(3px);  text-shadow: -2px 0 var(--acc2); animation: gl1 3.1s infinite linear alternate-reverse; }
+        .glitch::after  { color: var(--acc2); transform: translateX(-3px); text-shadow:  2px 0 var(--acc);  animation: gl2 2.6s infinite linear alternate-reverse; }
+        body.burst .glitch { text-shadow: 0 0 32px var(--acc), 4px 0 var(--acc2), -4px 0 var(--acc); }
+
+        .sub { max-width: 38rem; color: var(--dim); font-size: .95rem; line-height: 1.6; min-height: 3.1em; }
+        .sub b { color: var(--acc); font-weight: 600; }
+
+        /* --- okno terminala --- */
+        .term { width: min(46rem, 94vw); text-align: left; border-radius: .6rem; overflow: hidden;
+            background: rgba(0,0,0,.58); border: 1px solid color-mix(in srgb, var(--acc) 35%, transparent);
+            box-shadow: 0 0 0 1px rgba(0,0,0,.4), 0 8px 40px rgba(0,0,0,.5), 0 0 28px color-mix(in srgb, var(--acc) 18%, transparent);
+            backdrop-filter: blur(8px); transition: border-color .1s, box-shadow .1s; }
+        body.burst .term { border-color: var(--warn); box-shadow: 0 0 30px color-mix(in srgb, var(--warn) 45%, transparent); }
+        .term-bar { display: flex; align-items: center; gap: .4rem; padding: .5rem .8rem; font-size: .75rem; color: var(--dim);
+            background: rgba(255,255,255,.05); border-bottom: 1px solid color-mix(in srgb, var(--acc) 20%, transparent); }
+        .term-bar i { width: .6rem; height: .6rem; border-radius: 50%; background: var(--dim); opacity: .5; }
+        .term-bar i:first-child { background: var(--warn); opacity: .9; }
+        .term-bar span { margin-left: .5rem; }
+        .term-body { padding: .8rem 1rem; font-size: .82rem; line-height: 1.5; overflow: hidden; }
+        .term-body div { min-height: 1.5em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .term-body .cmd { color: var(--fg); }
+        .term-body .dim { color: var(--dim); }
+        .term-body .ok { color: var(--ok); }
+        .term-body .fail { color: var(--warn); }
+        .term-body .acc { color: var(--acc); text-shadow: 0 0 8px var(--glow); }
+        .term-body div:last-child::after { content: '\2588'; margin-left: 2px; color: var(--acc); animation: blink 1s steps(1) infinite; }
+        .term-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .55rem 1rem;
+            font-size: .75rem; color: var(--dim); border-top: 1px solid color-mix(in srgb, var(--acc) 20%, transparent); }
+
+        .bars { display: inline-flex; align-items: flex-end; gap: 3px; height: 1rem; }
+        .bars b { width: 4px; background: var(--warn); opacity: .25; border-radius: 1px; animation: bar 1.6s infinite; }
+        .bars b:nth-child(1) { height: 25%; animation-delay: 0s; }
+        .bars b:nth-child(2) { height: 45%; animation-delay: .15s; }
+        .bars b:nth-child(3) { height: 65%; animation-delay: .3s; }
+        .bars b:nth-child(4) { height: 82%; animation-delay: .45s; }
+        .bars b:nth-child(5) { height: 100%; animation-delay: .6s; }
+        .bars.is-ok b { background: var(--ok); opacity: 1; animation: none; }
+
+        /* --- przyciski --- */
+        .actions { display: flex; flex-wrap: wrap; justify-content: center; gap: .8rem; }
+        .btn { font-family: var(--mono); font-size: .9rem; color: var(--acc); text-decoration: none; cursor: pointer;
+            padding: .65rem 1.3rem; border-radius: .5rem; background: rgba(0,0,0,.35); border: 1px solid color-mix(in srgb, var(--acc) 55%, transparent);
+            transition: background .2s, box-shadow .2s, transform .1s, color .2s; }
+        .btn:hover { background: color-mix(in srgb, var(--acc) 18%, transparent); box-shadow: 0 0 14px var(--glow); color: var(--fg); transform: translateY(-1px); animation: btnglitch .3s steps(2) 1; }
+        .btn[hidden] { display: none; }
+
+        footer { position: relative; z-index: 1; padding: 1rem; text-align: center; font-size: .8rem; color: var(--dim); border-top: 1px solid rgba(255,255,255,.1); }
+        footer a { color: var(--acc); text-decoration: none; }
+        footer a:hover { color: var(--fg); }
+
+        /* --- animacje --- */
+        @keyframes blink { 50% { opacity: 0; } }
+        @keyframes pulse { 50% { opacity: .35; } }
+        @keyframes bar { 0%, 100% { opacity: .2; } 50% { opacity: 1; } }
+        @keyframes roll { to { transform: translateY(140vh); } }
+        @keyframes flicker { 0%, 90%, 100% { opacity: 1; } 91% { opacity: .82; } 92% { opacity: 1; } 95% { opacity: .9; } 96% { opacity: 1; } }
+        @keyframes shake {
+            0% { transform: translate(0,0); } 25% { transform: translate(-4px,1px) skewX(2deg); }
+            50% { transform: translate(5px,-1px); } 75% { transform: translate(-3px,2px) skewX(-2deg); } 100% { transform: translate(0,0); }
+        }
+        body.burst .stage { animation: shake .12s steps(2) infinite; }
+        @keyframes btnglitch { 0% { text-shadow: 2px 0 var(--acc2), -2px 0 var(--acc); } 100% { text-shadow: none; } }
+        @keyframes gl1 {
+            0% { clip-path: inset(8% 0 82% 0); } 8% { clip-path: inset(62% 0 12% 0); } 16% { clip-path: inset(30% 0 48% 0); }
+            24% { clip-path: inset(78% 0 4% 0); } 32% { clip-path: inset(0 0 94% 0); } 40% { clip-path: inset(44% 0 38% 0); }
+            52% { clip-path: inset(88% 0 2% 0); } 64% { clip-path: inset(18% 0 66% 0); } 76% { clip-path: inset(54% 0 28% 0); }
+            88% { clip-path: inset(2% 0 90% 0); } 100% { clip-path: inset(70% 0 14% 0); }
+        }
+        @keyframes gl2 {
+            0% { clip-path: inset(72% 0 10% 0); } 10% { clip-path: inset(14% 0 74% 0); } 20% { clip-path: inset(50% 0 30% 0); }
+            30% { clip-path: inset(4% 0 88% 0); } 42% { clip-path: inset(84% 0 6% 0); } 55% { clip-path: inset(26% 0 52% 0); }
+            66% { clip-path: inset(66% 0 20% 0); } 78% { clip-path: inset(36% 0 44% 0); } 90% { clip-path: inset(92% 0 0 0); }
+            100% { clip-path: inset(10% 0 78% 0); }
+        }
+
+        /* --- akcenty zależne od motywu --- */
+        body.matrix-theme .term { box-shadow: 0 0 0 1px rgba(0,0,0,.6), 0 0 34px rgba(0,255,102,.22); }
+        body.matrix-theme .glitch::before, body.matrix-theme .glitch::after { mix-blend-mode: screen; }
+        body.cyber-theme .glitch { letter-spacing: .09em; }
+        body.cyber-theme .term { clip-path: polygon(0 0, calc(100% - 18px) 0, 100% 18px, 100% 100%, 18px 100%, 0 calc(100% - 18px)); border-radius: 0; }
+        body.sunset-theme .glitch { text-shadow: 0 0 24px rgba(255,140,0,.6), 0 3px 0 rgba(255,94,126,.5); }
+        body.sunset-theme .scan::after { height: 26vh; background: linear-gradient(to bottom, transparent, rgba(255,255,255,.09), transparent); animation-duration: 5s; }
+        body.space-theme .glitch { letter-spacing: .12em; font-weight: 700; }
+
+        @media (max-width: 600px) {
+            .logo { top: 1rem; left: 1rem; } .logo img { height: 2rem; }
+            .theme-toggle { top: 1rem; right: 1rem; font-size: .875rem; padding: .375rem .75rem; }
+            .stage { padding-top: 5rem; gap: 1rem; }
+            .term-body { font-size: .72rem; padding: .6rem .75rem; }
+            .sub { font-size: .85rem; }
+            footer { font-size: .72rem; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition: none !important; }
+            .scan::after { display: none; }
+        }
+}
+
+!! ------------------------------------------------------------------ stan
+struct P4Line [
+    cls: Str,
+    prompt: Str,
+    text: Str,
+    wait: Float,
+    typ: Bool
+]
+
+struct P4Particle [
+    x: Float,
+    y: Float,
+    vx: Float,
+    vy: Float,
+    r: Float,
+    h: Float
+]
+
+struct P4Star [
+    x: Float,
+    y: Float,
+    r: Float,
+    p: Float,
+    s: Float,
+    v: Float
+]
+
+struct P4Shoot [
+    x: Float,
+    y: Float,
+    l: Float,
+    life: Float
+]
+
+let p4_themes = ["default", "space", "cyber", "matrix", "sunset"]
+let p4_glyphs = Array.from("!<>-_\\/[]{}=+*^?#01ｱｲｳｴｶｷ")
+let p4_mch = Array.from("ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉﾊﾋﾌﾍﾎﾏﾐﾑﾒﾓﾔﾕﾖﾗﾘﾙﾚﾛﾜﾝ0123456789:.=*+-<>")
+
+let p4_theme = "default"
+let p4_mode = "check"
+let p4_lang = "en"
+let p4_reduce = false
+let p4_forced = false
+let p4_assume = false
+let p4_params = null
+let p4_attempt = 0
+let p4_countdown = 3
+let p4_busy = false
+let p4_booted = false
+let p4_loop_timer = null
+let p4_run_id = 0
+let p4_max_l = 13
+
+let p4_bg = null
+let p4_c = null
+let p4_nz = null
+let p4_nc = null
+let p4_title = null
+let p4_sub = null
+let p4_chip = null
+let p4_chip_text = null
+let p4_term = null
+let p4_status = null
+let p4_bars = null
+let p4_retry = null
+let p4_home = null
+let p4_tears = null
+
+let p4_w = 0.0
+let p4_h = 0.0
+let p4_dpr = 1.0
+let p4_last = 0.0
+let p4_bursting = false
+let p4_fs = 16.0
+let p4_drops: List<Float> = []
+let p4_acc = 0.0
+let p4_stars: List<P4Star> = []
+let p4_shoot = null
+let p4_off = 0.0
+let p4_parts: List<P4Particle> = []
+let p4_nimg = null
+let p4_last_noise = 0.0
+
+let p4_scr_token = 0
+let p4_scr_final = ""
+let p4_scr_dur = 480.0
+let p4_scr_t0 = 0.0
+
+let p4_sg_y = 0.0
+let p4_sg_h = 0.0
+let p4_sg_dx = 0.0
+
+!! ------------------------------------------------------------------ pomocnicze
+!!! Dzielenie rzeczywiste (bez obcinania do liczby calkowitej).
+fun p4_div(a, b) -> Float [
+    end (a as Float) / (b as Float)
+]
+
+fun p4_pick(arr) [
+    end arr[Math.floor(Math.random() * arr.len())]
+]
+
+fun p4_is_theme(v) -> Bool [
+    for t in p4_themes [
+        if t == v [
+            end true
+        ]
+    ]
+    end false
+]
+
+fun p4_true(x) [
+    end true
+]
+
+fun p4_false(x) [
+    end false
+]
+
+!! wybor tekstu wg motywu: default, space, cyber, matrix, sunset
+fun p4_by_theme(t: Str, a, b, c, d, e) [
+    if t == "space" [
+        end b
+    ]
+    if t == "cyber" [
+        end c
+    ]
+    if t == "matrix" [
+        end d
+    ]
+    if t == "sunset" [
+        end e
+    ]
+    end a
+]
+
+!! ------------------------------------------------------------------ teksty
+fun p4_t_title_off(t: Str) -> Str [
+    if p4_lang == "pl" [
+        end p4_by_theme(t, "Offline", "Utrata sygnału", "Łącze zerwane", "Rozłączono", "Brak sygnału")
+    ]
+    end p4_by_theme(t, "Offline", "Signal lost", "Link severed", "Disconnected", "No signal")
+]
+
+fun p4_t_sub_off(t: Str) -> Str [
+    if p4_lang == "pl" [
+        end p4_by_theme(t, "Brak połączenia z internetem. Sprawdź <b>kabel, Wi-Fi lub router</b> - wrócimy, gdy tylko sieć znów zadziała.", "Houston, mamy problem. <b>Łączność z Ziemią</b> została przerwana. Wracamy na orbitę, gdy sygnał się odnajdzie.", "Uplink zerwany przez nieznany proces. <b>ICE</b> odcięło Twoje łącze. Trwa próba odzyskania dostępu...", "Obudź się... Matrix stracił z Tobą kontakt. <b>Podążaj za białym królikiem</b> - czyli sprawdź kabel.", "Śledzenie taśmy zgubione. <b>Sprawdź kabel</b> albo dmuchnij w kasetę i poczekaj na sygnał.")
+    ]
+    end p4_by_theme(t, "No internet connection. Check your <b>cable, Wi-Fi or router</b> - we will be back as soon as the network is.", "Houston, we have a problem. The <b>link to Earth</b> is down. We will re-enter orbit once the signal returns.", "Uplink cut by an unknown process. <b>ICE</b> severed your connection. Attempting to regain access...", "Wake up... the Matrix has lost you. <b>Follow the white rabbit</b> - or just check your cable.", "Tracking lost. <b>Check the cable</b> or blow on the cartridge and wait for the signal.")
+]
+
+fun p4_t_sub_nf() -> Str [
+    if p4_lang == "pl" [
+        end "Sieć działa, ale tej strony tu nie ma. <b>Ścieżka</b> nie istnieje albo została przeniesiona."
+    ]
+    end "The network is fine, but this page is not here. The <b>path</b> does not exist or has moved."
+]
+
+fun p4_t_chip(m: Str) -> Str [
+    if p4_lang == "pl" [
+        if m == "check" [
+            end "SKANOWANIE SIECI"
+        ]
+        if m == "offline" [
+            end "OFFLINE"
+        ]
+        if m == "notfound" [
+            end "BŁĄD 404"
+        ]
+        end "ONLINE"
+    ]
+    if m == "check" [
+        end "SCANNING NETWORK"
+    ]
+    if m == "offline" [
+        end "OFFLINE"
+    ]
+    if m == "notfound" [
+        end "ERROR 404"
+    ]
+    end "ONLINE"
+]
+
+fun p4_t_retry() -> Str [
+    if p4_lang == "pl" [
+        end "Spróbuj ponownie"
+    ]
+    end "Try again"
+]
+
+fun p4_t_home() -> Str [
+    if p4_lang == "pl" [
+        end "Strona główna"
+    ]
+    end "Home"
+]
+
+fun p4_t_retry_in(s) -> Str [
+    if p4_lang == "pl" [
+        end "kolejna próba za " + s + "s"
+    ]
+    end "next attempt in " + s + "s"
+]
+
+fun p4_t_trying() -> Str [
+    if p4_lang == "pl" [
+        end "łączenie..."
+    ]
+    end "connecting..."
+]
+
+fun p4_t_connected() -> Str [
+    if p4_lang == "pl" [
+        end "połączono"
+    ]
+    end "connected"
+]
+
+fun p4_t_idle() -> Str [
+    if p4_lang == "pl" [
+        end "sieć dostępna"
+    ]
+    end "network reachable"
+]
+
+fun p4_t_attempt() -> Str [
+    if p4_lang == "pl" [
+        end "próba połączenia"
+    ]
+    end "reconnect attempt"
+]
+
+fun p4_t_failed() -> Str [
+    if p4_lang == "pl" [
+        end "NIEUDANA"
+    ]
+    end "FAILED"
+]
+
+fun p4_t_restored() -> Str [
+    if p4_lang == "pl" [
+        end "[  OK  ] łącze przywrócone - wracam do wyszukiwarki..."
+    ]
+    end "[  OK  ] link restored - heading back to the search engine..."
+]
+
+fun p4_t_doc_title(m: Str) -> Str [
+    if m == "notfound" [
+        end "HackerOS Search | 404"
+    ]
+    end "HackerOS Search | Offline"
+]
+
+fun p4_t_last_online(w, a) -> Str [
+    if p4_lang == "pl" [
+        end "> ostatnio online: " + w + " (" + a + ")"
+    ]
+    end "> last online: " + w + " (" + a + ")"
+]
+
+fun p4_t_last_never() -> Str [
+    if p4_lang == "pl" [
+        end "> ostatnie połączenie: brak danych"
+    ]
+    end "> last connection: no data"
+]
+
+fun p4_t_ago(m) -> Str [
+    if p4_lang == "pl" [
+        end m + " min temu"
+    ]
+    end m + " min ago"
+]
+
+fun p4_t_just_now() -> Str [
+    if p4_lang == "pl" [
+        end "przed chwilą"
+    ]
+    end "just now"
+]
+
+!! ------------------------------------------------------------------ sciezka do strony glownej
+fun p4_home_url() -> Str [
+    let r = u_ls_get("hackeros_root_main")
+    if r == null [
+        r = u_ls_get("hackeros_root")
+    ]
+    if r != null and r != "" and not str_ends_with(r, "blue") and not str_ends_with(r, "blue.html") [
+        end r
+    ]
+    let seg = ""
+    for part in str_split(location.pathname, "/") [
+        if part != "" and seg == "" [
+            seg = part
+        ]
+    ]
+    if str_ends_with(location.hostname, ".github.io") and seg != "" and not str_ends_with(seg, ".html") [
+        end location.origin + "/" + seg + "/"
+    ]
+    if str_ends_with(location.pathname, "404.html") [
+        end "index.html"
+    ]
+    end location.origin + "/"
+]
+
+!! ------------------------------------------------------------------ ostatnie polaczenie (zapisywane przez guard)
+fun p4_last_online_text() -> Str [
+    let raw = u_ls_get("hackeros_last_online")
+    let ts = Number(raw)
+    if raw == null or raw == "" or not Number.isFinite(ts) or ts <= 0 [
+        end p4_t_last_never()
+    ]
+    let loc = "en-US"
+    if p4_lang == "pl" [
+        loc = "pl-PL"
+    ]
+    let d = Reflect.construct(Date, [ts])
+    let when = d.toLocaleTimeString(loc, u_obj("{\"hour\":\"2-digit\",\"minute\":\"2-digit\"}"))
+    let mins = Math.floor(p4_div(Date.now() - ts, 60000))
+    if mins < 1 [
+        end p4_t_last_online(when, p4_t_just_now())
+    ]
+    end p4_t_last_online(when, p4_t_ago(mins))
+]
+
+!! ------------------------------------------------------------------ test lacznosci
+async fun p4_probe() -> Bool [
+    if p4_forced [
+        end false
+    ]
+    if not navigator.onLine [
+        end false
+    ]
+    if location.protocol == "file:" [
+        end true
+    ]
+    let ctl = Reflect.construct(AbortController, [])
+    let tm = set_timeout(ctl.abort.bind(ctl), 3500)
+    !! parametr "probe" jest pomijany przez Service Worker -> zapytanie idzie prawdziwie do sieci
+    let opts = u_obj("{\"method\":\"HEAD\",\"cache\":\"no-store\"}")
+    opts.signal = ctl.signal
+    let good = await fetch(location.pathname + "?probe=" + Date.now(), opts).then(p4_true, p4_false)
+    clearTimeout(tm)
+    end good
+]
+
+!! ------------------------------------------------------------------ tytul: scramble
+fun p4_set_title(t: Str) [
+    p4_title.textContent = t
+    p4_title.setAttribute("data-text", t)
+]
+
+fun p4_scramble_step(token) [
+    if token != p4_scr_token [
+        end 0
+    ]
+    let spent = performance.now() - p4_scr_t0
+    let p = p4_div(spent, p4_scr_dur)
+    if p >= 1 [
+        p4_set_title(p4_scr_final)
+        end 0
+    ]
+    let out = ""
+    for ch in Array.from(p4_scr_final) [
+        if ch == " " or Math.random() < p [
+            out = out + ch
+        ] else [
+            out = out + p4_pick(p4_glyphs)
+        ]
+    ]
+    p4_set_title(out)
+    requestAnimationFrame(p4_scramble_step.bind(null, token))
+]
+
+fun p4_scramble(final: Str, dur: Float) [
+    p4_scr_token = p4_scr_token + 1
+    let token = p4_scr_token
+    if p4_reduce [
+        p4_set_title(final)
+        end 0
+    ]
+    p4_scr_final = final
+    p4_scr_dur = dur
+    p4_scr_t0 = performance.now()
+    p4_scramble_step(token)
+]
+
+fun p4_current_title() -> Str [
+    if p4_mode == "notfound" [
+        end "404"
+    ]
+    if p4_mode == "restored" [
+        end p4_t_chip("ok")
+    ]
+    end p4_t_title_off(p4_theme)
+]
+
+!! ------------------------------------------------------------------ terminal
+fun p4_add_line(cls: Str, text: Str) [
+    let d = u_el(p4_term, "div", cls, text)
+    while p4_term.children.length > p4_max_l and p4_term.firstChild != null [
+        p4_term.removeChild(p4_term.firstChild)
+    ]
+    end d
+]
+
+fun p4_flavor(t: Str) -> List<List<Str>> [
+    if t == "space" [
+        end [["acc", "> Houston, we have a problem."], ["dim", "> deep-space link: carrier lost"]]
+    ]
+    if t == "cyber" [
+        end [["acc", "> ICE intrusion detected"], ["fail", "> uplink severed by pid 1337 (unknown)"]]
+    ]
+    if t == "matrix" [
+        end [["acc", "> Wake up, Neo..."], ["acc", "> The Matrix has you..."], ["acc", "> Follow the white rabbit."]]
+    ]
+    if t == "sunset" [
+        end [["acc", "> VCR: TRACKING ERROR  CH 03"], ["dim", "> insert tape / adjust antenna"]]
+    ]
+    let line = "> check cable / Wi-Fi / router"
+    if p4_lang == "pl" [
+        line = "> sprawdź kabel / Wi-Fi / router"
+    ]
+    end [["acc", line]]
+]
+
+fun p4_build_script() -> List<P4Line> [
+    let pr = "root@hackeros:~# "
+    let l: List<P4Line> = []
+    let flavor = p4_flavor(p4_theme)
+    if p4_mode == "offline" [
+        l.push(P4Line("cmd", pr, "ip link show wlan0", 220.0, false))
+        l.push(P4Line("dim", "", "2: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> state DOWN", 160.0, false))
+        l.push(P4Line("cmd", pr, "ping -c 3 1.1.1.1", 220.0, false))
+        l.push(P4Line("fail", "", "ping: connect: Network is unreachable", 160.0, false))
+        l.push(P4Line("cmd", pr, "nslookup ecosia.org", 220.0, false))
+        l.push(P4Line("fail", "", ";; connection timed out; no servers could be reached", 200.0, false))
+        l.push(P4Line("fail", "", "[ FAIL ] uplink lost (no carrier)", 220.0, false))
+        l.push(P4Line("dim", "", p4_last_online_text(), 160.0, false))
+        for f in flavor [
+            l.push(P4Line(f[0], "", f[1], 260.0, true))
+        ]
+        l.push(P4Line("dim", "", "[ .... ] auto-reconnect: enabled", 150.0, false))
+    ] else [
+        l.push(P4Line("cmd", pr, "curl -I " + location.pathname, 220.0, false))
+        l.push(P4Line("fail", "", "HTTP/1.1 404 Not Found", 160.0, false))
+        l.push(P4Line("dim", "", "x-hackeros: path not found in the matrix", 160.0, false))
+        l.push(P4Line("ok", "", "[  OK  ] network reachable", 200.0, false))
+        for f2 in flavor [
+            l.push(P4Line(f2[0], "", f2[1], 240.0, true))
+        ]
+        let tail = "> this page simply is not here."
+        if p4_lang == "pl" [
+            tail = "> tej strony po prostu tu nie ma."
+        ]
+        l.push(P4Line("dim", "", tail, 150.0, false))
+    ]
+    end l
+]
+
+async fun p4_play() [
+    p4_run_id = p4_run_id + 1
+    let id = p4_run_id
+    p4_booted = false
+    dom_html(p4_term, "")
+    for ln in p4_build_script() [
+        if id != p4_run_id [
+            end 0
+        ]
+        let line = p4_add_line(ln.cls, "")
+        if (ln.prompt != "" or ln.typ) and not p4_reduce [
+            line.textContent = ln.prompt
+            for ch in Array.from(ln.text) [
+                line.textContent = line.textContent + ch
+                await sleep(u_rnd(14, 38))
+                if id != p4_run_id [
+                    end 0
+                ]
+            ]
+        ] else [
+            line.textContent = ln.prompt + ln.text
+        ]
+        if p4_reduce [
+            await sleep(0)
+        ] else [
+            await sleep(ln.wait)
+        ]
+    ]
+    if id == p4_run_id [
+        p4_booted = true
+    ]
+]
+
+!! play() a potem (od razu lub tylko w trybie offline) petla ponownych prob
+async fun p4_play_loop_if_offline() [
+    await p4_play()
+    if p4_mode == "offline" [
+        p4_start_loop()
+    ]
+]
+
+async fun p4_play_loop() [
+    await p4_play()
+    p4_start_loop()
+]
+
+fun p4_hex() -> Str [
+    end "0x" + Math.floor(Math.random() * 65535).toString(16).toUpperCase().padStart(4, "0")
+]
+
+fun p4_noise_line() [
+    let k = Math.floor(Math.random() * 4)
+    let txt = ""
+    if k == 0 [
+        txt = "[ ERR  ] packet " + p4_hex() + " dropped (seq=" + Math.floor(Math.random() * 999) + ")"
+    ] elif k == 1 [
+        txt = "[ ERR  ] arp: who-has 192.168.0.1 timeout"
+    ] elif k == 2 [
+        txt = "[ WARN ] dhcp: no lease, rebind failed"
+    ] else [
+        txt = "[ ERR  ] dns: SERVFAIL " + p4_hex()
+    ]
+    p4_add_line("fail", txt)
+]
+
+!! ------------------------------------------------------------------ render stanu
+fun p4_render() [
+    let key = "offline"
+    if p4_mode == "notfound" [
+        key = "notfound"
+        dom_html(p4_sub, p4_t_sub_nf())
+    ] else [
+        dom_html(p4_sub, p4_t_sub_off(p4_theme))
+    ]
+    let chip = "chip "
+    if p4_mode == "notfound" [
+        chip = chip + "is-404"
+    ] elif p4_mode == "check" [
+        chip = chip + "is-check"
+    ] elif p4_mode == "restored" [
+        chip = chip + "is-ok"
+    ]
+    p4_chip.className = chip
+    p4_chip_text.textContent = p4_t_chip(p4_mode)
+    let bars = "bars"
+    if p4_mode == "notfound" or p4_mode == "restored" [
+        bars = "bars is-ok"
+    ]
+    p4_bars.className = bars
+    p4_retry.textContent = p4_t_retry()
+    p4_home.textContent = p4_t_home()
+    p4_home.href = p4_home_url()
+    p4_home.hidden = p4_mode != "notfound"
+    p4_retry.hidden = p4_mode != "offline"
+    if p4_mode == "notfound" [
+        p4_status.textContent = p4_t_idle()
+    ] elif p4_mode == "restored" [
+        p4_status.textContent = p4_t_connected()
+    ] else [
+        p4_status.textContent = p4_t_retry_in(p4_countdown)
+    ]
+    if p4_mode != "check" [
+        document.title = p4_t_doc_title(key)
+    ]
+    p4_scramble(p4_current_title(), 480.0)
+]
+
+!! ------------------------------------------------------------------ petla ponownych prob
+fun p4_tick() [
+    if p4_mode != "offline" or p4_busy or not p4_booted [
+        end 0
+    ]
+    p4_countdown = p4_countdown - 1
+    if p4_countdown <= 0 [
+        p4_reconnect()
+        end 0
+    ]
+    p4_status.textContent = p4_t_retry_in(p4_countdown)
+    if Math.random() < 0.4 [
+        p4_noise_line()
+    ]
+]
+
+fun p4_start_loop() [
+    clearInterval(p4_loop_timer)
+    p4_countdown = 3
+    p4_loop_timer = set_interval(p4_tick, 1000)
+]
+
+async fun p4_reconnect() [
+    if p4_busy or p4_mode != "offline" [
+        end 0
+    ]
+    p4_busy = true
+    p4_attempt = p4_attempt + 1
+    p4_status.textContent = p4_t_trying()
+    let line = p4_add_line("dim", "[ .... ] " + p4_t_attempt() + " #" + p4_attempt + " ...")
+    let online = false
+    if p4_forced [
+        await sleep(700)
+    ] else [
+        online = await p4_probe()
+    ]
+    if online [
+        line.className = "ok"
+        line.textContent = "[  OK  ] " + p4_t_attempt() + " #" + p4_attempt + " ... OK"
+        p4_busy = false
+        p4_restored()
+        end 0
+    ]
+    line.className = "fail"
+    line.textContent = "[ FAIL ] " + p4_t_attempt() + " #" + p4_attempt + " ... " + p4_t_failed()
+    p4_countdown = 3
+    p4_status.textContent = p4_t_retry_in(p4_countdown)
+    p4_busy = false
+    p4_burst(180)
+]
+
+fun p4_after_restored() [
+    if str_ends_with(location.pathname, "404.html") [
+        location.replace(p4_home_url())
+    ] else [
+        location.reload()
+    ]
+]
+
+fun p4_restored() [
+    p4_mode = "restored"
+    clearInterval(p4_loop_timer)
+    p4_add_line("ok", p4_t_restored())
+    p4_render()
+    p4_burst(700)
+    set_timeout(p4_after_restored, 1600)
+]
+
+!! ------------------------------------------------------------------ motyw
+fun p4_apply_theme(t: Str, save: Bool) [
+    p4_theme = t
+    u_call(document.body.classList, "remove", ["space-theme", "cyber-theme", "matrix-theme", "sunset-theme"])
+    if t != "default" [
+        document.body.classList.add(t + "-theme")
+    ]
+    if save [
+        u_ls_set("theme", t)
+    ]
+    p4_init_scene()
+    p4_c.clearRect(0, 0, p4_bg.width, p4_bg.height)
+]
+
+fun p4_next_theme() -> Str [
+    let i = 0
+    let idx = 0
+    for t in p4_themes [
+        if t == p4_theme [
+            idx = i
+        ]
+        i = i + 1
+    ]
+    end p4_themes[(idx + 1) % p4_themes.len()]
+]
+
+fun p4_on_toggle(e) [
+    p4_apply_theme(p4_next_theme(), true)
+    p4_render()
+    if p4_mode != "check" [
+        p4_play_loop_if_offline()
+    ]
+    p4_burst(320)
+]
+
+!! ------------------------------------------------------------------ tlo (canvas)
+fun p4_resize() [
+    p4_dpr = Math.min(window.devicePixelRatio or 1, 2)
+    p4_w = innerWidth
+    p4_h = innerHeight
+    p4_bg.width = p4_w * p4_dpr
+    p4_bg.height = p4_h * p4_dpr
+    p4_c.setTransform(p4_dpr, 0, 0, p4_dpr, 0, 0)
+    p4_init_scene()
+]
+
+fun p4_on_resize(e) [
+    p4_resize()
+]
+
+fun p4_make_particles(n, h_min, h_max, speed) -> List<P4Particle> [
+    let out: List<P4Particle> = []
+    let i = 0
+    while i < n [
+        out.push(P4Particle(u_rnd(0, p4_w), u_rnd(0, p4_h), u_rnd(0.0 - speed, speed), u_rnd(0.0 - speed, speed), u_rnd(1, 2.4), u_rnd(h_min, h_max)))
+        i = i + 1
+    ]
+    end out
+]
+
+fun p4_init_scene() [
+    p4_fs = 16.0
+    p4_drops = []
+    p4_acc = 0.0
+    p4_stars = []
+    p4_shoot = null
+    p4_off = 0.0
+    p4_parts = []
+    if p4_theme == "matrix" [
+        let n = Math.ceil(p4_div(p4_w, 16))
+        let i = 0
+        while i < n [
+            p4_drops.push(u_rnd(-40, 0))
+            i = i + 1
+        ]
+    ] elif p4_theme == "space" [
+        let n2 = Math.min(280, Math.floor(p4_div(p4_w * p4_h, 5500)))
+        let j = 0
+        while j < n2 [
+            let r = u_rnd(0.3, 1.5)
+            p4_stars.push(P4Star(u_rnd(0, p4_w), u_rnd(0, p4_h), r, u_rnd(0, 6.28), u_rnd(0.4, 1.6), 0.01 + r * 0.02))
+            j = j + 1
+        ]
+    ] elif p4_theme == "cyber" [
+        p4_parts = p4_make_particles(40, 170, 310, 0.25)
+    ] elif p4_theme == "sunset" [
+        p4_parts = p4_make_particles(45, 10, 45, 0.18)
+    ] else [
+        p4_parts = p4_make_particles(55, 200, 230, 0.15)
+    ]
+]
+
+fun p4_draw_particles(links: Bool, dist: Float) [
+    let c = p4_c
+    for p in p4_parts [
+        p.x = p.x + p.vx
+        p.y = p.y + p.vy
+        if p.x < 0 or p.x > p4_w [
+            p.vx = -p.vx
+        ]
+        if p.y < 0 or p.y > p4_h [
+            p.vy = -p.vy
+        ]
+        c.fillStyle = "hsla(" + p.h + ",70%,60%,.55)"
+        c.beginPath()
+        c.arc(p.x, p.y, p.r, 0, 6.2832)
+        c.fill()
+    ]
+    if not links [
+        end 0
+    ]
+    c.lineWidth = 0.5
+    let n = p4_parts.len()
+    let i = 0
+    while i < n [
+        let pi = p4_parts[i]
+        let j = i + 1
+        while j < n [
+            let pj = p4_parts[j]
+            let dx = pi.x - pj.x
+            let dy = pi.y - pj.y
+            let d = Math.hypot(dx, dy)
+            if d < dist [
+                c.strokeStyle = "hsla(" + pi.h + ",70%,60%," + ((1 - p4_div(d, dist)) * 0.25) + ")"
+                c.beginPath()
+                c.moveTo(pi.x, pi.y)
+                c.lineTo(pj.x, pj.y)
+                c.stroke()
+            ]
+            j = j + 1
+        ]
+        i = i + 1
+    ]
+]
+
+fun p4_draw_default() [
+    p4_c.clearRect(0, 0, p4_w, p4_h)
+    p4_draw_particles(true, 110.0)
+]
+
+fun p4_draw_space(t, dt) [
+    let c = p4_c
+    c.clearRect(0, 0, p4_w, p4_h)
+    for s in p4_stars [
+        s.x = s.x - s.v * dt * 0.06 * 16
+        if s.x < 0 [
+            s.x = p4_w
+            s.y = u_rnd(0, p4_h)
+        ]
+        let a = 0.35 + 0.65 * Math.abs(Math.sin(t * 0.001 * s.s + s.p))
+        c.fillStyle = "rgba(255,255,255," + a + ")"
+        c.beginPath()
+        c.arc(s.x, s.y, s.r, 0, 6.2832)
+        c.fill()
+    ]
+    if p4_shoot == null and Math.random() < 0.006 [
+        p4_shoot = P4Shoot(u_rnd(p4_w * 0.4, p4_w), u_rnd(0, p4_h * 0.4), u_rnd(80, 160), 1.0)
+    ]
+    let sh = p4_shoot
+    if sh != null [
+        let g = c.createLinearGradient(sh.x, sh.y, sh.x + sh.l, sh.y - sh.l * 0.5)
+        g.addColorStop(0, "rgba(255,255,255," + sh.life + ")")
+        g.addColorStop(1, "rgba(255,255,255,0)")
+        c.strokeStyle = g
+        c.lineWidth = 1.6
+        c.beginPath()
+        c.moveTo(sh.x, sh.y)
+        c.lineTo(sh.x + sh.l, sh.y - sh.l * 0.5)
+        c.stroke()
+        sh.x = sh.x - 14
+        sh.y = sh.y + 7
+        sh.life = sh.life - 0.02
+        if sh.life <= 0 [
+            p4_shoot = null
+        ]
+    ]
+]
+
+fun p4_draw_cyber(dt) [
+    let c = p4_c
+    c.clearRect(0, 0, p4_w, p4_h)
+    let hy = p4_h * 0.58
+    let sky = c.createLinearGradient(0, hy - 120, 0, hy)
+    sky.addColorStop(0, "rgba(255,0,255,0)")
+    sky.addColorStop(1, "rgba(255,0,255,.14)")
+    c.fillStyle = sky
+    c.fillRect(0, hy - 120, p4_w, 120)
+    p4_off = (p4_off + dt * 0.00035) % 1
+    c.lineWidth = 1
+    let rows = 14
+    let k = 0
+    while k < rows [
+        let f = p4_div(k + p4_off, rows)
+        let y = hy + (p4_h - hy) * f * f
+        c.strokeStyle = "rgba(255,0,255," + (0.08 + f * 0.4) + ")"
+        c.beginPath()
+        c.moveTo(0, y)
+        c.lineTo(p4_w, y)
+        c.stroke()
+        k = k + 1
+    ]
+    let cols = 18
+    let i = 0 - cols
+    while i <= cols [
+        c.strokeStyle = "rgba(0,255,255," + (0.12 + (1 - p4_div(Math.abs(i), cols)) * 0.25) + ")"
+        c.beginPath()
+        c.moveTo(p4_div(p4_w, 2) + i * 14, hy)
+        c.lineTo(p4_div(p4_w, 2) + i * p4_div(p4_w, cols) * 0.9, p4_h)
+        c.stroke()
+        i = i + 1
+    ]
+    c.strokeStyle = "rgba(0,255,255,.7)"
+    c.lineWidth = 1.5
+    c.beginPath()
+    c.moveTo(0, hy)
+    c.lineTo(p4_w, hy)
+    c.stroke()
+    p4_draw_particles(true, 120.0)
+]
+
+fun p4_draw_matrix(dt) [
+    let c = p4_c
+    p4_acc = p4_acc + dt
+    if p4_acc < 55 [
+        end 0
+    ]
+    p4_acc = 0.0
+    c.globalCompositeOperation = "destination-out"
+    c.fillStyle = "rgba(0,0,0,.10)"
+    c.fillRect(0, 0, p4_w, p4_h)
+    c.globalCompositeOperation = "source-over"
+    c.font = p4_fs + "px monospace"
+    let n = p4_drops.len()
+    let i = 0
+    while i < n [
+        let x = i * p4_fs
+        let y = p4_drops[i] * p4_fs
+        if y > 0 [
+            c.fillStyle = "rgba(0,255,102,.85)"
+            c.fillText(p4_pick(p4_mch), x, y - p4_fs)
+            c.fillStyle = "#d6ffe6"
+            c.fillText(p4_pick(p4_mch), x, y)
+        ]
+        if y > p4_h and Math.random() > 0.975 [
+            p4_drops[i] = 0
+        ]
+        p4_drops[i] = p4_drops[i] + 1
+        i = i + 1
+    ]
+]
+
+fun p4_draw_sunset(t) [
+    let c = p4_c
+    c.clearRect(0, 0, p4_w, p4_h)
+    let r = Math.min(p4_w, p4_h) * 0.2
+    let cx = p4_div(p4_w, 2)
+    let cy = p4_h * 0.7
+    let g = c.createLinearGradient(0, cy - r, 0, cy + r)
+    g.addColorStop(0, "rgba(255,214,107,.75)")
+    g.addColorStop(1, "rgba(255,77,141,.75)")
+    c.fillStyle = g
+    c.beginPath()
+    c.arc(cx, cy, r, 0, 6.2832)
+    c.fill()
+    c.globalCompositeOperation = "destination-out"
+    let sp = r * 0.2
+    let shift = (t * 0.012) % sp
+    let j = 0
+    while j < 9 [
+        let y = cy + r * 0.05 + j * sp - shift + sp
+        let h = 2 + j * 1.6
+        if y > cy and y < cy + r [
+            c.fillRect(cx - r, y, r * 2, h)
+        ]
+        j = j + 1
+    ]
+    c.globalCompositeOperation = "source-over"
+    let k = 0
+    while k < 2 [
+        let y2 = ((t * 0.05 + k * p4_h * 0.5) % (p4_h + 60)) - 30
+        let b = c.createLinearGradient(0, y2, 0, y2 + 30)
+        b.addColorStop(0, "rgba(255,255,255,0)")
+        b.addColorStop(0.5, "rgba(255,255,255,.07)")
+        b.addColorStop(1, "rgba(255,255,255,0)")
+        c.fillStyle = b
+        c.fillRect(0, y2, p4_w, 30)
+        k = k + 1
+    ]
+    p4_draw_particles(true, 100.0)
+]
+
+fun p4_draw(t, dt) [
+    if p4_theme == "space" [
+        p4_draw_space(t, dt)
+    ] elif p4_theme == "cyber" [
+        p4_draw_cyber(dt)
+    ] elif p4_theme == "matrix" [
+        p4_draw_matrix(dt)
+    ] elif p4_theme == "sunset" [
+        p4_draw_sunset(t)
+    ] else [
+        p4_draw_default()
+    ]
+]
+
+!! przesuniete "paski" obrazu - efekt datamoshingu w trakcie glitcha
+fun p4_slice_run() [
+    p4_c.drawImage(p4_bg, 0, p4_sg_y, p4_bg.width, p4_sg_h, p4_sg_dx, p4_sg_y, p4_bg.width, p4_sg_h)
+]
+
+fun p4_slice_glitch() [
+    let c = p4_c
+    c.save()
+    c.setTransform(1, 0, 0, 1, 0, 0)
+    let n = 3 + Math.floor(Math.random() * 4)
+    let i = 0
+    while i < n [
+        p4_sg_h = Math.floor((10 + Math.random() * 80) * p4_dpr)
+        p4_sg_y = Math.floor(Math.random() * Math.max(1, p4_bg.height - p4_sg_h))
+        p4_sg_dx = Math.trunc((Math.random() - 0.5) * 140 * p4_dpr)
+        u_try(p4_slice_run)
+        i = i + 1
+    ]
+    c.restore()
+]
+
+!! szum "TV static"
+fun p4_draw_noise() [
+    let d = p4_nimg.data
+    let n = d.length
+    let i = 0
+    while i < n [
+        let v = Math.random() * 255
+        d[i] = v
+        d[i + 1] = v
+        d[i + 2] = v
+        d[i + 3] = 255
+        i = i + 4
+    ]
+    p4_nc.putImageData(p4_nimg, 0, 0)
+]
+
+fun p4_frame(t) [
+    requestAnimationFrame(p4_frame)
+    let d0 = t - p4_last
+    if d0 == 0 [
+        d0 = 16
+    ]
+    let dt = Math.min(60, d0)
+    p4_last = t
+    p4_draw(t, dt)
+    if p4_bursting [
+        p4_slice_glitch()
+    ]
+    if t - p4_last_noise > 55 [
+        p4_draw_noise()
+        p4_last_noise = t
+    ]
+]
+
+!! ------------------------------------------------------------------ glitch "burst"
+fun p4_shuffle() [
+    for t in Array.from(p4_tears.children) [
+        t.style.top = u_rnd(0, 100) + "%"
+        t.style.height = u_rnd(1, 9) + "%"
+        t.style.transform = "translateX(" + u_rnd(-60, 60) + "px)"
+    ]
+]
+
+fun p4_burst_end(iv) [
+    clearInterval(iv)
+    p4_bursting = false
+    u_cls_remove(document.body, "burst")
+]
+
+!! dur = 0 -> losowy czas 220-520 ms (jak `dur || rnd(220, 520)`)
+fun p4_burst(dur) [
+    if p4_reduce [
+        end 0
+    ]
+    let duration = dur
+    if not dur [
+        duration = u_rnd(220, 520)
+    ]
+    p4_bursting = true
+    document.body.classList.add("burst")
+    p4_shuffle()
+    let iv = set_interval(p4_shuffle, 70)
+    if p4_mode == "offline" or p4_mode == "check" [
+        p4_scramble(p4_current_title(), 300.0)
+    ]
+    set_timeout(p4_burst_end.bind(null, iv), duration)
+]
+
+fun p4_burst_160() [
+    p4_burst(160)
+]
+
+fun p4_schedule_fire() [
+    p4_burst(0)
+    if Math.random() < 0.3 [
+        set_timeout(p4_burst_160, 420)
+    ]
+    p4_schedule()
+]
+
+fun p4_schedule() [
+    let a = 3500
+    let b = 9000
+    if p4_theme == "space" [
+        a = 3000
+        b = 8000
+    ] elif p4_theme == "cyber" [
+        a = 1500
+        b = 4500
+    ] elif p4_theme == "matrix" [
+        a = 2500
+        b = 6500
+    ] elif p4_theme == "sunset" [
+        a = 2000
+        b = 5500
+    ]
+    set_timeout(p4_schedule_fire, u_rnd(a, b))
+]
+
+fun p4_on_title_click(e) [
+    p4_burst(420)
+]
+
+fun p4_on_retry_click(e) [
+    p4_countdown = 0
+    p4_burst(200)
+    p4_reconnect()
+]
+
+fun p4_on_keydown(e) [
+    if (e.key == "r" or e.key == "R") and not e.ctrlKey and not e.metaKey and p4_mode == "offline" [
+        p4_burst(200)
+        p4_reconnect()
+    ]
+]
+
+!! zdarzenia przegladarki: gdy siec zniknie / wroci juz po otwarciu strony
+fun p4_on_offline(e) [
+    if p4_mode == "offline" or p4_mode == "restored" [
+        end 0
+    ]
+    p4_mode = "offline"
+    p4_render()
+    p4_play_loop()
+    p4_burst(400)
+]
+
+fun p4_on_online(e) [
+    if p4_mode == "offline" [
+        p4_reconnect()
+    ]
+]
+
+fun p4_logo_error(e) [
+    e.target.parentNode.style.display = "none"
+]
+
+!! ------------------------------------------------------------------ start
+async fun p4_init() [
+    p4_resize()
+    p4_apply_theme(p4_theme, false)
+    window.addEventListener("resize", p4_on_resize)
+    p4_render()
+    requestAnimationFrame(p4_frame)
+    let online = await p4_probe()
+    if online and p4_assume [
+        !! wejscie z ?lost, a siec juz wrocila - od razu wracamy do wyszukiwarki
+        p4_restored()
+        end 0
+    ]
+    if online [
+        p4_mode = "notfound"
+    ] else [
+        p4_mode = "offline"
+    ]
+    p4_render()
+    p4_burst(380)
+    await p4_play()
+    if p4_mode == "offline" [
+        p4_start_loop()
+    ]
+]
+
+!! ------------------------------------------------------------------ szkielet strony (body z 404.html)
+fun p4_build_head() [
+    let head = document.head
+    u_attrs(u_el(head, "meta", "", ""), ["name", "robots", "content", "noindex"])
+    !! znacznik rozpoznawany przez guard (odroznia ten plik od zwyklego bledu)
+    u_attrs(u_el(head, "meta", "", ""), ["name", "hackeros-offline", "content", "main"])
+    u_attrs(u_el(head, "link", "", ""), ["rel", "icon", "type", "image/png", "href", "https://raw.githubusercontent.com/HackerOS-Linux-System/HackerOS-Website/main/HackerOS.png"])
+    page_title("HackerOS Search | Offline")
+]
+
+fun p4_build_body() [
+    let body = document.body
+    p4_bg = u_attrs(u_el(body, "canvas", "", ""), ["id", "bg", "aria-hidden", "true"])
+    p4_nz = u_attrs(u_el(body, "canvas", "", ""), ["id", "noise", "aria-hidden", "true"])
+    p4_tears = u_attrs(u_el(body, "div", "", ""), ["id", "tears", "aria-hidden", "true"])
+    u_attrs(u_el(body, "div", "vignette", ""), ["aria-hidden", "true"])
+    u_attrs(u_el(body, "div", "scan", ""), ["aria-hidden", "true"])
+
+    let logo = u_attrs(u_el(body, "a", "logo", ""), ["id", "logo", "href", "index.html", "aria-label", "HackerOS Search"])
+    let img = u_attrs(u_el(logo, "img", "", ""), ["src", "https://raw.githubusercontent.com/HackerOS-Linux-System/HackerOS-Website/main/HackerOS.png", "alt", "HackerOS Logo"])
+    img.addEventListener("error", p4_logo_error)
+    let toggle = u_attrs(u_el(body, "button", "theme-toggle", "Change"), ["type", "button", "id", "themeToggle"])
+    toggle.addEventListener("click", p4_on_toggle)
+
+    let stage = u_el(body, "main", "stage", "")
+    p4_chip = u_attrs(u_el(stage, "div", "chip is-check", ""), ["id", "chip", "role", "status", "aria-live", "polite"])
+    u_el(p4_chip, "span", "dot", "")
+    p4_chip_text = u_attrs(u_el(p4_chip, "span", "", "..."), ["id", "chipText"])
+    p4_title = u_attrs(u_el(stage, "h1", "glitch", "OFFLINE"), ["id", "title", "data-text", "OFFLINE", "title", "glitch!"])
+    p4_sub = u_attrs(u_el(stage, "p", "sub", "Brak połączenia z internetem."), ["id", "sub"])
+
+    let term = u_attrs(u_el(stage, "section", "term", ""), ["aria-label", "Terminal diagnostyczny"])
+    let bar = u_el(term, "div", "term-bar", "")
+    u_el(bar, "i", "", "")
+    u_el(bar, "i", "", "")
+    u_el(bar, "i", "", "")
+    u_attrs(u_el(bar, "span", "", "root@hackeros: ~/network"), ["id", "termTitle"])
+    p4_term = u_attrs(u_el(term, "div", "term-body", ""), ["id", "term", "aria-hidden", "true"])
+    let foot = u_el(term, "div", "term-foot", "")
+    p4_bars = u_attrs(u_el(foot, "span", "bars", ""), ["id", "bars", "aria-hidden", "true"])
+    u_el(p4_bars, "b", "", "")
+    u_el(p4_bars, "b", "", "")
+    u_el(p4_bars, "b", "", "")
+    u_el(p4_bars, "b", "", "")
+    u_el(p4_bars, "b", "", "")
+    p4_status = u_attrs(u_el(foot, "span", "", ""), ["id", "statusText"])
+
+    let actions = u_el(stage, "div", "actions", "")
+    p4_retry = u_attrs(u_el(actions, "button", "btn", "Spróbuj ponownie"), ["type", "button", "id", "retry"])
+    p4_home = u_attrs(u_el(actions, "a", "btn", "Strona główna"), ["id", "homeBtn", "href", "index.html", "hidden", ""])
+    let ns = u_el(stage, "noscript", "", "")
+    dom_html(ns, '<p class="sub">Brak połączenia z internetem. Sprawdź kabel, Wi-Fi lub router i odśwież stronę.</p>')
+
+    let footer = u_el(body, "footer", "", "")
+    dom_html(footer, '<a href="https://hackeros-linux-system.github.io/HackerOS-Website/" target="_blank" rel="noopener">HackerOS</a> Search | © 2026')
+]
+
+fun main() [
+    p4_reduce = false
+    if window.matchMedia [
+        p4_reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ]
+    if u_is_pl() [
+        p4_lang = "pl"
+    ]
+    p4_params = Reflect.construct(URLSearchParams, [location.search])
+    p4_forced = p4_params.has("offline")
+    p4_assume = p4_params.has("lost")
+
+    let saved = u_ls_get("theme")
+    if p4_is_theme(saved) [
+        p4_theme = saved
+    ]
+    let theme_param = u_call(p4_params, "get", ["theme"])
+    if p4_is_theme(theme_param) [
+        p4_theme = theme_param
+    ]
+
+    p4_build_head()
+    p4_build_body()
+    p4_c = p4_bg.getContext("2d")
+    p4_nc = p4_nz.getContext("2d")
+    if innerWidth < 600 [
+        p4_max_l = 11
+    ]
+    p4_term.style.height = (p4_max_l * 1.5) + "em"
+    document.documentElement.lang = p4_lang
+
+    p4_nz.width = 192
+    p4_nz.height = 108
+    p4_nimg = p4_nc.createImageData(192, 108)
+
+    let i = 0
+    while i < 5 [
+        let cls = "tear"
+        if i % 2 == 1 [
+            cls = "tear alt"
+        ]
+        u_el(p4_tears, "div", cls, "")
+        i = i + 1
+    ]
+
+    p4_title.addEventListener("click", p4_on_title_click)
+    p4_retry.addEventListener("click", p4_on_retry_click)
+    document.addEventListener("keydown", p4_on_keydown)
+    window.addEventListener("offline", p4_on_offline)
+    window.addEventListener("online", p4_on_online)
+    p4_schedule()
+    p4_init()
+]
