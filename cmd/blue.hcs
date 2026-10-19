@@ -1,0 +1,528 @@
+use <mode:website>
+include <lib/util>
+include <lib/guard>
+include <lib/idle>
+
+!!! Blue Search - ukryta podstrona "Blue Edition" (blue.html), w calosci w HackerScript.
+!!! Port 1:1 z blue.html + blue.css + src/blue.ts. Nie ma do niej linku z index.html.
+!!! Sluzy jako strona startowa / wyszukiwarka w srodowisku graficznym Blue:
+!!! animowany kosmos, logo i wyszukiwarka (bez gornego paska). Nazwy z prefiksem `bl_`.
+
+style {
+    /* skeleton hackerc: kontener ma byc przezroczysty, body bez dodatkowego line-height */
+    #app { display: contents; max-width: none; margin: 0; padding: 0; }
+    body { line-height: normal; }
+
+:root {
+    --sky-0: #03060f;
+    --sky-1: #070d1f;
+    --line: #15203a;
+    --fg: #e6ecfa;
+    --dim: #8a97b8;
+    --accent: #3b8bff;
+    --accent-hi: #6aa8ff;
+    --ui: 'Inter', 'Cantarell', 'Noto Sans', 'DejaVu Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+    font-family: var(--ui);
+    color: var(--fg);
+    background: var(--sky-0);
+    overflow: hidden;
+}
+
+/* --- tapeta: powoli dryfujące mgławice (gwiazdy rysuje canvas #sky) --- */
+body::before,
+body::after {
+    content: '';
+    position: fixed;
+    inset: -12%;
+    z-index: -2;
+    pointer-events: none;
+    will-change: transform;
+}
+body::before {
+    background:
+        radial-gradient(ellipse 60% 38% at 62% 46%, rgba(40, 70, 150, 0.26), transparent 70%),
+        radial-gradient(ellipse 45% 30% at 30% 68%, rgba(30, 60, 140, 0.18), transparent 70%),
+        radial-gradient(ellipse 80% 60% at 50% 40%, var(--sky-1), var(--sky-0) 80%);
+    animation: nebula-a 70s ease-in-out infinite alternate;
+}
+body::after {
+    background:
+        radial-gradient(ellipse 34% 22% at 24% 28%, rgba(90, 60, 190, 0.14), transparent 70%),
+        radial-gradient(ellipse 30% 20% at 78% 74%, rgba(30, 120, 220, 0.12), transparent 70%);
+    animation: nebula-b 95s ease-in-out infinite alternate;
+}
+@keyframes nebula-a {
+    from { transform: translate3d(-1.5%, -1%, 0) scale(1) rotate(0deg); }
+    to   { transform: translate3d(1.5%, 1.2%, 0) scale(1.08) rotate(2.5deg); }
+}
+@keyframes nebula-b {
+    from { transform: translate3d(2%, 1%, 0) scale(1.05) rotate(0deg); }
+    to   { transform: translate3d(-2%, -1.5%, 0) scale(1) rotate(-3deg); }
+}
+
+#sky {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    pointer-events: none;
+}
+
+svg {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.75;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+:focus-visible { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+
+/* --- scena: logo + wyszukiwarka --- */
+.stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(28px, 6vh, 56px);
+    padding: 0 20px 6vh;
+}
+
+.logo {
+    width: clamp(150px, 26vmin, 290px);
+    height: auto;
+    user-select: none;
+    filter: drop-shadow(0 0 38px rgba(40, 110, 255, 0.28));
+    animation: logo-in 0.6s ease-out both;
+}
+@keyframes logo-in {
+    from { opacity: 0; transform: scale(0.94); filter: drop-shadow(0 0 0 rgba(40, 110, 255, 0)); }
+}
+
+.search {
+    position: relative;
+    width: min(560px, 100%);
+    display: flex;
+    align-items: center;
+    background: rgba(10, 17, 36, 0.72);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    backdrop-filter: blur(8px);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.search:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 4px rgba(59, 139, 255, 0.16), 0 8px 30px rgba(0, 0, 0, 0.45);
+}
+.search-input {
+    width: 100%;
+    padding: 15px 56px 15px 24px;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--fg);
+    font: 17px/1.2 var(--ui);
+}
+.search-input::placeholder { color: var(--dim); }
+.search-btn {
+    position: absolute;
+    right: 8px;
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    color: var(--dim);
+    background: none;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+.search-btn svg { width: 18px; height: 18px; }
+.search-btn:hover, .search-btn:focus-visible { background: var(--accent); color: #fff; }
+
+@media (prefers-reduced-motion: reduce) {
+    .logo { animation: none; }
+    body::before, body::after { animation: none; }
+    * { transition: none !important; }
+}
+}
+
+!! ------------------------------------------------------------------ kosmos
+!! Gwiazda w przestrzeni 3D: x, y w zakresie -1..1, z od 1 (daleko) do ~0 (tuz przy nas)
+struct BlStar [
+    x: Float,
+    y: Float,
+    z: Float,
+    tw: Float,
+    ph: Float,
+    big: Bool,
+    warm: Bool
+]
+
+struct BlMeteor [
+    x: Float,
+    y: Float,
+    vx: Float,
+    vy: Float,
+    len: Float,
+    life: Float,
+    max: Float
+]
+
+let bl_z_min = 0.035
+let bl_base_speed = 0.028
+
+let bl_pl = true
+let bl_reduce = false
+let bl_input = null
+let bl_form = null
+let bl_canvas = null
+let bl_ctx = null
+let bl_stars: List<BlStar> = []
+let bl_meteors: List<BlMeteor> = []
+let bl_w = 0.0
+let bl_h = 0.0
+let bl_raf = 0
+let bl_last_t = 0.0
+let bl_next_meteor = 0.0
+let bl_boost = 1.0
+let bl_px = 0.0
+let bl_py = 0.0
+let bl_cpx = 0.0
+let bl_cpy = 0.0
+
+fun bl_div(a, b) -> Float [
+    end (a as Float) / (b as Float)
+]
+
+fun bl_spawn(random_z: Bool) -> BlStar [
+    let big = Math.random() < 0.025
+    let z = 1.0
+    if random_z [
+        z = bl_z_min + Math.random() * (1 - bl_z_min)
+    ]
+    end BlStar(Math.random() * 2 - 1, Math.random() * 2 - 1, z, 0.5 + Math.random() * 1.6, Math.random() * Math.PI * 2, big, Math.random() < 0.12)
+]
+
+fun bl_build_stars() [
+    let count = Math.min(650, Math.round((bl_w * bl_h) / 2600))
+    bl_stars = []
+    let i = 0
+    while i < count [
+        bl_stars.push(bl_spawn(true))
+        i = i + 1
+    ]
+]
+
+fun bl_draw_star(s: BlStar, t, speed_factor) -> Bool [
+    if bl_ctx == null [
+        end false
+    ]
+    let scale = Math.max(bl_w, bl_h) * 0.55
+    !! blizsze gwiazdy przesuwaja sie bardziej (paralaksa)
+    let cx = bl_w / 2.0 + bl_cpx * (1 - s.z)
+    let cy = bl_h / 2.0 + bl_cpy * (1 - s.z)
+    let k = 1 / s.z
+    let sx = cx + s.x * scale * k * 0.42
+    let sy = cy + s.y * scale * k * 0.42
+    if sx < -20 or sx > bl_w + 20 or sy < -20 or sy > bl_h + 20 [
+        end false
+    ]
+
+    let near = 1 - s.z
+    let tw = 1.0
+    if not bl_reduce [
+        tw = 0.8 + 0.2 * Math.sin(t * 0.001 * s.tw + s.ph)
+    ]
+    let alpha = Math.min(1, (0.18 + near * 1.1) * tw)
+    let r = 0.35 + near * 1.35
+    if s.big [
+        r = 0.9 + near * 2.1
+    ]
+    let rgb = "190, 212, 255"
+    if s.warm [
+        rgb = "255, 232, 205"
+    ] elif near > 0.55 [
+        rgb = "225, 238, 255"
+    ]
+
+    !! smuga przy szybszym locie (np. podczas pisania)
+    if speed_factor > 1.6 and not bl_reduce [
+        let k2 = 1 / (s.z + 0.012 * speed_factor)
+        let tx = cx + s.x * scale * k2 * 0.42
+        let ty = cy + s.y * scale * k2 * 0.42
+        bl_ctx.strokeStyle = "rgba(" + rgb + ", " + (alpha * 0.7) + ")"
+        bl_ctx.lineWidth = Math.max(0.6, r * 0.9)
+        bl_ctx.beginPath()
+        bl_ctx.moveTo(tx, ty)
+        bl_ctx.lineTo(sx, sy)
+        bl_ctx.stroke()
+    ]
+
+    if s.big and near > 0.3 [
+        let halo = bl_ctx.createRadialGradient(sx, sy, 0, sx, sy, r * 6)
+        halo.addColorStop(0, "rgba(150, 190, 255, " + (0.3 * alpha) + ")")
+        halo.addColorStop(1, "rgba(150, 190, 255, 0)")
+        bl_ctx.fillStyle = halo
+        bl_ctx.fillRect(sx - r * 6, sy - r * 6, r * 12, r * 12)
+        bl_ctx.strokeStyle = "rgba(200, 222, 255, " + (0.5 * alpha) + ")"
+        bl_ctx.lineWidth = 0.6
+        bl_ctx.beginPath()
+        bl_ctx.moveTo(sx - r * 4.5, sy)
+        bl_ctx.lineTo(sx + r * 4.5, sy)
+        bl_ctx.moveTo(sx, sy - r * 4.5)
+        bl_ctx.lineTo(sx, sy + r * 4.5)
+        bl_ctx.stroke()
+    ]
+    bl_ctx.fillStyle = "rgba(" + rgb + ", " + alpha + ")"
+    bl_ctx.beginPath()
+    bl_ctx.arc(sx, sy, r, 0, Math.PI * 2)
+    bl_ctx.fill()
+    end true
+]
+
+fun bl_spawn_meteor() [
+    let dir = -1
+    if Math.random() < 0.5 [
+        dir = 1
+    ]
+    let speed = 700 + Math.random() * 500
+    let ang = (18 + Math.random() * 22) * (Math.PI / 180)
+    let x = bl_w * (0.3 + Math.random() * 0.7)
+    if dir == 1 [
+        x = Math.random() * bl_w * 0.7
+    ]
+    bl_meteors.push(BlMeteor(x, Math.random() * bl_h * 0.45, Math.cos(ang) * speed * dir, Math.sin(ang) * speed, 110 + Math.random() * 130, 0, 0.7 + Math.random() * 0.5))
+]
+
+fun bl_draw_meteors(dt) [
+    if bl_ctx == null [
+        end 0
+    ]
+    let i = bl_meteors.len() - 1
+    while i >= 0 [
+        let m = bl_meteors[i]
+        m.life = m.life + dt
+        m.x = m.x + m.vx * dt
+        m.y = m.y + m.vy * dt
+        let p = m.life / m.max
+        if p >= 1 [
+            bl_meteors.remove(i)
+            i = i - 1
+            continue
+        ]
+        let fade = Math.sin(p * Math.PI)
+        let sp = Math.hypot(m.vx, m.vy)
+        let tx = m.x - (m.vx / sp) * m.len
+        let ty = m.y - (m.vy / sp) * m.len
+        let g = bl_ctx.createLinearGradient(m.x, m.y, tx, ty)
+        g.addColorStop(0, "rgba(230, 240, 255, " + (0.95 * fade) + ")")
+        g.addColorStop(0.3, "rgba(140, 180, 255, " + (0.45 * fade) + ")")
+        g.addColorStop(1, "rgba(100, 150, 255, 0)")
+        bl_ctx.strokeStyle = g
+        bl_ctx.lineWidth = 1.6
+        bl_ctx.lineCap = "round"
+        bl_ctx.beginPath()
+        bl_ctx.moveTo(m.x, m.y)
+        bl_ctx.lineTo(tx, ty)
+        bl_ctx.stroke()
+        bl_ctx.fillStyle = "rgba(255, 255, 255, " + fade + ")"
+        bl_ctx.beginPath()
+        bl_ctx.arc(m.x, m.y, 1.5, 0, Math.PI * 2)
+        bl_ctx.fill()
+        i = i - 1
+    ]
+]
+
+fun bl_frame(now) [
+    !! strona zostala podmieniona (np. ekranem offline)
+    if bl_ctx == null or not bl_canvas.isConnected [
+        end 0
+    ]
+    let dt = 0.016
+    if bl_last_t != 0 [
+        dt = Math.min(0.05, (now - bl_last_t) / 1000)
+    ] else [
+        dt = Math.min(0.05, dt)
+    ]
+    bl_last_t = now
+
+    bl_boost = bl_boost + (1 - bl_boost) * Math.min(1, dt * 2.2)
+    bl_cpx = bl_cpx + (bl_px - bl_cpx) * Math.min(1, dt * 3)
+    bl_cpy = bl_cpy + (bl_py - bl_cpy) * Math.min(1, dt * 3)
+
+    bl_ctx.clearRect(0, 0, bl_w, bl_h)
+    let dz = bl_base_speed * bl_boost * dt
+    let i = 0
+    while i < bl_stars.len() [
+        let s = bl_stars[i]
+        s.z = s.z - dz * (0.6 + (1 - s.z) * 0.9)
+        if s.z <= bl_z_min or not bl_draw_star(s, now, bl_boost) [
+            bl_stars[i] = bl_spawn(false)
+        ]
+        i = i + 1
+    ]
+
+    bl_next_meteor = bl_next_meteor - dt
+    if bl_next_meteor <= 0 [
+        bl_spawn_meteor()
+        bl_next_meteor = 2.5 + Math.random() * 6
+    ]
+    bl_draw_meteors(dt)
+
+    if document.hidden [
+        bl_raf = 0
+    ] else [
+        bl_raf = requestAnimationFrame(bl_frame)
+    ]
+]
+
+fun bl_draw_static() [
+    if bl_ctx == null [
+        end 0
+    ]
+    bl_ctx.clearRect(0, 0, bl_w, bl_h)
+    for s in bl_stars [
+        bl_draw_star(s, 0, 1)
+    ]
+]
+
+fun bl_start(e) [
+    cancelAnimationFrame(bl_raf)
+    bl_raf = 0
+    bl_last_t = 0
+    if bl_reduce [
+        bl_draw_static()
+    ] elif not document.hidden [
+        bl_raf = requestAnimationFrame(bl_frame)
+    ]
+]
+
+fun bl_resize(e) [
+    let dpr = Math.min(window.devicePixelRatio or 1, 2)
+    bl_w = window.innerWidth
+    bl_h = window.innerHeight
+    bl_canvas.width = Math.round(bl_w * dpr)
+    bl_canvas.height = Math.round(bl_h * dpr)
+    if bl_ctx != null [
+        bl_ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ]
+    bl_build_stars()
+    bl_start(null)
+]
+
+!! ------------------------------------------------------------------ zdarzenia
+!! paralaksa: kosmos delikatnie "podaza" za kursorem
+fun bl_on_mouse_move(e) [
+    bl_px = 0 - (bl_div(e.clientX, bl_w) * 2 - 1) * 46
+    bl_py = 0 - (bl_div(e.clientY, bl_h) * 2 - 1) * 46
+]
+
+!! pisanie w wyszukiwarce = krotki "skok w nadprzestrzen"
+fun bl_on_input(e) [
+    bl_boost = Math.min(7, bl_boost + 2.2)
+]
+
+fun bl_on_submit(e) [
+    if bl_input.value.trim() == "" [
+        e.preventDefault()
+        bl_input.focus()
+    ]
+]
+
+!! dowolny znak = pisz w wyszukiwarce
+fun bl_on_keydown(e) [
+    let ae = document.activeElement
+    let typing = ae != null and ae.tagName == "INPUT"
+    if e.key == "Escape" [
+        if typing [
+            ae.blur()
+        ]
+    ] elif not typing and not e.ctrlKey and not e.metaKey and not e.altKey and e.key.length == 1 [
+        bl_input.focus()
+    ]
+]
+
+fun bl_sw_failed(err) [
+    console.warn("Service Worker registration failed:", err)
+]
+
+!! ------------------------------------------------------------------ szkielet strony (head + body z blue.html)
+let bl_logo = "https://raw.githubusercontent.com/HackerOS-Linux-System/Blue-Environment/main/images/logo.png"
+let bl_icon = "https://raw.githubusercontent.com/HackerOS-Linux-System/Blue-Environment/main/images/icon.png"
+
+fun bl_build_head() [
+    let head = document.head
+    u_attrs(u_el(head, "meta", "", ""), ["name", "robots", "content", "noindex, nofollow"])
+    u_attrs(u_el(head, "meta", "", ""), ["name", "color-scheme", "content", "dark"])
+    u_attrs(u_el(head, "meta", "", ""), ["name", "theme-color", "content", "#060b19"])
+    u_attrs(u_el(head, "link", "", ""), ["rel", "icon", "type", "image/png", "href", bl_logo])
+    page_title("Blue Search")
+]
+
+fun bl_build_body() [
+    let body = document.body
+    bl_canvas = u_attrs(u_el(body, "canvas", "", ""), ["id", "sky", "aria-hidden", "true"])
+    let stage = u_el(body, "main", "stage", "")
+    u_attrs(u_el(stage, "img", "logo", ""), ["src", bl_icon, "alt", "Blue", "draggable", "false"])
+    bl_form = u_attrs(u_el(stage, "form", "search", ""), ["id", "searchForm", "action", "https://www.ecosia.org/search", "method", "GET", "role", "search", "aria-label", "Wyszukiwarka Ecosia"])
+    bl_input = u_attrs(u_el(bl_form, "input", "search-input", ""), ["type", "text", "id", "searchInput", "name", "q", "placeholder", "Wyszukaj w Ecosia...", "required", "", "autocomplete", "off", "autofocus", "", "aria-label", "Wprowadź frazę wyszukiwania"])
+    let btn = u_attrs(u_el(bl_form, "button", "search-btn", ""), ["type", "submit", "aria-label", "Szukaj"])
+    btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>'
+]
+
+fun main() [
+    bl_pl = u_is_pl()
+    if window.matchMedia [
+        bl_reduce = matchMedia("(prefers-reduced-motion: reduce)").matches
+    ]
+
+    bl_build_head()
+    bl_build_body()
+
+    if bl_pl [
+        document.documentElement.lang = "pl"
+    ] else [
+        document.documentElement.lang = "en"
+        bl_input.placeholder = "Search with Ecosia..."
+    ]
+
+    !! --- offline: zapis stanu w localStorage + ekran offline.html (wspolny guard) ---
+    guard_init("blue", location.href.split("?")[0].split("#")[0])
+
+    !! --- zdarzenia bezczynnosci: 5 min UFO, 10 min strzelec, 15 min samolot ---
+    idle_init()
+
+    !! --- kosmos ---
+    bl_ctx = bl_canvas.getContext("2d")
+    window.addEventListener("resize", bl_resize)
+    document.addEventListener("visibilitychange", bl_start)
+    bl_resize(null)
+
+    if not bl_reduce [
+        window.addEventListener("mousemove", bl_on_mouse_move)
+        bl_input.addEventListener("input", bl_on_input)
+    ]
+
+    !! --- wyszukiwanie ---
+    bl_form.addEventListener("submit", bl_on_submit)
+    document.addEventListener("keydown", bl_on_keydown)
+    bl_input.focus()
+
+    !! --- Service Worker (ten sam sw.js co dla index.html) ---
+    let sw_ok = location.protocol == "https:" or location.hostname == "localhost" or location.hostname == "127.0.0.1"
+    if navigator.serviceWorker and sw_ok [
+        navigator.serviceWorker.register("sw.js").catch(bl_sw_failed)
+    ]
+]
