@@ -1,0 +1,527 @@
+style {
+.hos-layer{position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden;transition:opacity .35s ease}
+.hos-layer.hos-out{opacity:0}
+.hos-abs{position:absolute;left:0;top:0;will-change:transform}
+/* odciecie od globalnych regul svg strony (np. blue.css: fill:none; stroke:currentColor) */
+.hos-layer svg{fill:#000;stroke:none;stroke-width:1;stroke-linecap:butt;stroke-linejoin:miter}
+
+.hos-ufo{filter:drop-shadow(0 0 16px rgba(130,255,200,.5))}
+.hos-ufo svg{display:block;width:100%;height:auto;overflow:visible}
+.hos-beam{animation:hosBeam 1.1s ease-in-out infinite alternate}
+.hos-light{animation:hosBlink .7s steps(2,jump-none) infinite}
+@keyframes hosBeam{from{opacity:.25}to{opacity:1}}
+@keyframes hosBlink{50%{opacity:.15}}
+
+.hos-plane-rig{display:flex;align-items:center;filter:drop-shadow(0 4px 10px rgba(0,0,0,.45))}
+.hos-plane-rig svg{display:block;overflow:visible}
+.hos-banner{position:relative;white-space:nowrap;font:800 clamp(15px,2.5vw,30px)/1 system-ui,-apple-system,'Segoe UI',Arial,sans-serif;
+  letter-spacing:.02em;color:#a31622;background:#fff8e1;padding:.55em 1.4em .55em 1.7em;
+  clip-path:polygon(0 0,100% 0,100% 100%,0 100%,.9em 50%);transform-origin:100% 50%;
+  animation:hosFlutter .55s ease-in-out infinite alternate}
+@keyframes hosFlutter{from{transform:skewY(-2.5deg) scaleY(1)}to{transform:skewY(2.5deg) scaleY(.94)}}
+.hos-prop{transform-box:fill-box;transform-origin:center;animation:hosProp .08s linear infinite alternate}
+@keyframes hosProp{from{transform:scaleY(1)}to{transform:scaleY(.2)}}
+
+.hos-dim{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 70%,rgba(0,0,0,.15),rgba(0,0,0,.55));opacity:0;transition:opacity .6s ease}
+.hos-dim.on{opacity:1}
+.hos-gunman{position:absolute;left:50%;bottom:0;transform:translate(-50%,105%);transition:transform .7s cubic-bezier(.2,.8,.2,1);will-change:transform}
+.hos-gunman.up{transform:translate(-50%,0)}
+.hos-gunman svg{display:block;height:100%;width:auto;overflow:visible}
+.hos-flash{position:absolute;pointer-events:none;border-radius:50%;opacity:0;
+  background:radial-gradient(circle,rgba(255,255,230,.95),rgba(255,200,80,.55) 35%,rgba(255,140,0,0) 70%)}
+.hos-tracer{position:absolute;height:2px;transform-origin:0 50%;background:linear-gradient(90deg,rgba(255,240,170,.95),rgba(255,200,90,0));border-radius:2px}
+.hos-hit{position:absolute;width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;
+  background:radial-gradient(circle,#fff,rgba(255,210,120,.8) 40%,rgba(255,150,40,0) 70%)}
+.hos-hit svg{position:absolute;left:-21px;top:-21px;width:52px;height:52px;overflow:visible}
+}
+
+!!! Scena (UFO / strzelec / samolot). `done` to Promise konczacy sie razem ze scena.
+struct IdleScene [
+    id: Int,
+    kind: Str,
+    layer: Any,
+    anim: Any,
+    done: Any,
+    timers: List<Any>,
+    cancelled: Bool,
+    finish: Any,
+    dim: Any,
+    man: Any,
+    flash: Any,
+    mx: Float,
+    my: Float
+]
+
+let idle_order = ["ufo", "punisher", "plane"]
+let idle_default_step = 300000
+let idle_muzzle_x = 0.5
+let idle_muzzle_y = (262 as Float) / (560 as Float)
+
+let idle_last = 0
+let idle_stage = 0
+let idle_step = 300000
+let idle_cur = null
+let idle_cur_id = 0
+let idle_seq = 0
+let idle_previewing = false
+
+!!! ---------------------------------------------------------------- wspolne
+
+fun idle_make_layer() [
+    let d = document.createElement("div")
+    d.className = "hos-layer"
+    d.setAttribute("aria-hidden", "true")
+    document.body.appendChild(d)
+    end d
+]
+
+!!! Wspolne sprzatanie: znika plynnie, potem jest usuwane z DOM.
+fun idle_dispose(layer, fast: Bool) [
+    layer.classList.add("hos-out")
+    let delay = 0
+    if fast [
+        delay = 380
+    ]
+    window.setTimeout(layer.remove.bind(layer), delay)
+    if not fast [
+        layer.remove()
+    ]
+]
+
+fun idle_new_scene(kind: Str, layer) [
+    idle_seq = idle_seq + 1
+    end IdleScene(idle_seq, kind, layer, null, null, [], false, null, null, null, null, 0.0, 0.0)
+]
+
+!!! Koniec animacji (normalny): sprzatanie bez znikania.
+fun idle_anim_done(layer, v) [
+    idle_dispose(layer, false)
+    end 0
+]
+
+fun idle_anim_opts(duration) [
+    end u_obj("{\"duration\":" + duration + ",\"easing\":\"linear\",\"fill\":\"forwards\"}")
+]
+
+fun idle_cancel(scene) [
+    if scene.kind == "punisher" [
+        scene.cancelled = true
+        for id in scene.timers [
+            clearTimeout(id)
+        ]
+        idle_dispose(scene.layer, true)
+        let f = scene.finish
+        f(null)
+    ] else [
+        scene.anim.cancel()
+        idle_dispose(scene.layer, true)
+    ]
+]
+
+!!! ---------------------------------------------------------------- UFO
+
+fun idle_ufo_svg() -> Str [
+    let l = [
+        '<svg viewBox="0 0 200 170" xmlns="http://www.w3.org/2000/svg">',
+        '  <defs>',
+        '    <linearGradient id="hosBeamG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#9dffb8" stop-opacity=".6"/><stop offset="1" stop-color="#9dffb8" stop-opacity="0"/></linearGradient>',
+        '    <radialGradient id="hosDomeG" cx=".4" cy=".3" r=".8"><stop offset="0" stop-color="#eafff6"/><stop offset=".5" stop-color="#7fe7d0" stop-opacity=".9"/><stop offset="1" stop-color="#2a8f9e" stop-opacity=".95"/></radialGradient>',
+        '    <linearGradient id="hosHullG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e3e9f0"/><stop offset=".55" stop-color="#8d99aa"/><stop offset="1" stop-color="#4a5464"/></linearGradient>',
+        '  </defs>',
+        '  <polygon class="hos-beam" points="80,64 120,64 178,168 22,168" fill="url(#hosBeamG)"/>',
+        '  <ellipse cx="100" cy="34" rx="34" ry="28" fill="url(#hosDomeG)"/>',
+        '  <ellipse cx="100" cy="38" rx="9" ry="11" fill="#2f6b4a"/>',
+        '  <ellipse cx="96" cy="37" rx="2.6" ry="4" fill="#0d1a12" transform="rotate(-18 96 37)"/>',
+        '  <ellipse cx="104" cy="37" rx="2.6" ry="4" fill="#0d1a12" transform="rotate(18 104 37)"/>',
+        '  <ellipse cx="100" cy="54" rx="92" ry="21" fill="url(#hosHullG)"/>',
+        '  <ellipse cx="100" cy="47" rx="68" ry="9" fill="#fff" opacity=".2"/>',
+        '  <g fill="#ffe46b">',
+        '    <circle class="hos-light" cx="30" cy="58" r="4.2" style="animation-delay:0s"/>',
+        '    <circle class="hos-light" cx="62" cy="64" r="4.2" style="animation-delay:.14s"/>',
+        '    <circle class="hos-light" cx="100" cy="67" r="4.2" style="animation-delay:.28s"/>',
+        '    <circle class="hos-light" cx="138" cy="64" r="4.2" style="animation-delay:.42s"/>',
+        '    <circle class="hos-light" cx="170" cy="58" r="4.2" style="animation-delay:.56s"/>',
+        '  </g>',
+        '</svg>'
+    ]
+    end "\n" + str_join(l, "\n")
+]
+
+fun idle_ufo_scene() [
+    let layer = idle_make_layer()
+    let size = u_clamp(innerWidth * 0.17, 100, 200)
+    let ufo = document.createElement("div")
+    ufo.className = "hos-abs hos-ufo"
+    ufo.style.width = size + "px"
+    ufo.innerHTML = idle_ufo_svg()
+    layer.append(ufo)
+
+    let from_left = Math.random() < 0.5
+    let x0 = innerWidth + size * 0.2
+    let x1 = -size * 1.2
+    if from_left [
+        x0 = -size * 1.2
+        x1 = innerWidth + size * 0.2
+    ]
+    let base_y = innerHeight * u_rnd(0.1, 0.3)
+    let frames: List<Str> = []
+    let steps = 48
+    for i in range(0, steps + 1) [
+        let t = (i as Float) / (steps as Float)
+        let x = x0 + (x1 - x0) * t
+        let y = base_y + Math.sin(t * Math.PI * 5) * innerHeight * 0.035 + Math.sin(t * Math.PI * 1.6) * innerHeight * 0.07
+        let tilt = Math.cos(t * Math.PI * 5) * 7
+        frames.push("{\"transform\":\"translate(" + x.toFixed(1) + "px," + y.toFixed(1) + "px) rotate(" + tilt.toFixed(1) + "deg)\",\"offset\":" + t + "}")
+    ]
+    let duration = u_clamp((((innerWidth + size * 1.4) as Float) / 150.0) * 1000, 7000, 14000)
+    let anim = ufo.animate(u_obj("[" + str_join(frames, ",") + "]"), idle_anim_opts(duration))
+    let scene = idle_new_scene("ufo", layer)
+    scene.anim = anim
+    scene.done = anim.finished.then(idle_anim_done.bind(null, layer), u_noop)
+    end scene
+]
+
+!!! ---------------------------------------------------------------- samolot z transparentem
+
+fun idle_plane_svg() -> Str [
+    let l = [
+        '<svg viewBox="0 0 230 96" xmlns="http://www.w3.org/2000/svg">',
+        '  <path d="M22 42 L12 10 L38 10 L66 36 Z" fill="#d93a3a"/>',
+        '  <path d="M28 52 L8 64 L50 62 Z" fill="#b92d2d"/>',
+        '  <path d="M26 50 Q26 36 64 33 L172 30 Q212 32 220 48 Q212 64 172 66 L64 64 Q26 64 26 50Z" fill="#f3f6fb" stroke="#97a4b8" stroke-width="1.5"/>',
+        '  <rect x="40" y="46" width="168" height="6" fill="#d93a3a" opacity=".85"/>',
+        '  <path d="M118 52 L98 88 L140 88 L156 52 Z" fill="#d93a3a"/>',
+        '  <path d="M136 36 Q150 22 172 33 Z" fill="#8fd4ff" stroke="#6d93b3" stroke-width="1.3"/>',
+        '  <circle cx="221" cy="48" r="6.5" fill="#444"/>',
+        '  <ellipse class="hos-prop" cx="224" cy="48" rx="3.5" ry="32" fill="#2a2a2a" opacity=".55"/>',
+        '  <path d="M150 66 L156 82" stroke="#444" stroke-width="3" fill="none"/>',
+        '  <circle cx="156" cy="86" r="6.5" fill="#333"/><circle cx="156" cy="86" r="2.5" fill="#999"/>',
+        '</svg>'
+    ]
+    end "\n" + str_join(l, "\n")
+]
+
+fun idle_plane_scene() [
+    let layer = idle_make_layer()
+    let rig = document.createElement("div")
+    rig.className = "hos-abs hos-plane-rig"
+    let banner = document.createElement("div")
+    banner.className = "hos-banner"
+    if u_is_pl() [
+        banner.textContent = "wyszukaj cokolwiek"
+    ] else [
+        banner.textContent = "search for anything"
+    ]
+    let rope = document.createElement("div")
+    rope.innerHTML = '<svg width="54" height="22" viewBox="0 0 54 22"><path d="M0 11 Q27 4 54 11" fill="none" stroke="#e8e8e8" stroke-width="2"/></svg>'
+    let plane = document.createElement("div")
+    plane.style.width = u_clamp(innerWidth * 0.16, 110, 210) + "px"
+    plane.innerHTML = idle_plane_svg()
+    if plane.firstElementChild != null [
+        plane.firstElementChild.setAttribute("width", "100%")
+    ]
+    rig.append(banner, rope, plane)
+    layer.append(rig)
+
+    let rig_w = rig.getBoundingClientRect().width
+    let base_y = innerHeight * u_rnd(0.14, 0.34)
+    let frames: List<Str> = []
+    let steps = 48
+    for i in range(0, steps + 1) [
+        let t = (i as Float) / (steps as Float)
+        let x = -rig_w - 20 + (innerWidth + rig_w + 40) * t
+        let y = base_y + Math.sin(t * Math.PI * 3) * innerHeight * 0.025
+        let pitch = Math.cos(t * Math.PI * 3) * 1.6
+        frames.push("{\"transform\":\"translate(" + x.toFixed(1) + "px," + y.toFixed(1) + "px) rotate(" + pitch.toFixed(2) + "deg)\",\"offset\":" + t + "}")
+    ]
+    let duration = u_clamp((((innerWidth + rig_w) as Float) / 120.0) * 1000, 9000, 20000)
+    let anim = rig.animate(u_obj("[" + str_join(frames, ",") + "]"), idle_anim_opts(duration))
+    let scene = idle_new_scene("plane", layer)
+    scene.anim = anim
+    scene.done = anim.finished.then(idle_anim_done.bind(null, layer), u_noop)
+    end scene
+]
+
+!!! ---------------------------------------------------------------- strzelec
+!!! Oryginalna, narysowana kodem sylwetka: ciemny strzelec z czaszka na kamizelce, celuje z karabinu prosto w ekran.
+
+fun idle_gunman_svg() -> Str [
+    let l = [
+        '<svg viewBox="0 0 300 560" xmlns="http://www.w3.org/2000/svg">',
+        '  <defs>',
+        '    <linearGradient id="hosVest" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#26282c"/><stop offset="1" stop-color="#111214"/></linearGradient>',
+        '    <radialGradient id="hosSkin" cx=".5" cy=".4" r=".7"><stop offset="0" stop-color="#d7b196"/><stop offset="1" stop-color="#a97f64"/></radialGradient>',
+        '  </defs>',
+        '  <!-- nogi -->',
+        '  <path d="M96 340 L86 560 L146 560 L152 360 Z" fill="#17181b"/>',
+        '  <path d="M204 340 L214 560 L154 560 L148 360 Z" fill="#131417"/>',
+        '  <!-- tulow -->',
+        '  <path d="M82 168 Q150 144 218 168 L232 214 L214 350 Q150 372 86 350 L68 214 Z" fill="url(#hosVest)" stroke="#000" stroke-width="2"/>',
+        '  <path d="M104 176 L104 346 M196 176 L196 346" stroke="#050505" stroke-width="3" opacity=".6"/>',
+        '  <!-- czaszka na piersi -->',
+        '  <g transform="translate(150 232)" fill="#ececec">',
+        '    <ellipse cx="0" cy="-8" rx="21" ry="19"/>',
+        '    <rect x="-12" y="6" width="24" height="14" rx="3"/>',
+        '    <ellipse cx="-8" cy="-8" rx="5.6" ry="6.6" fill="#101012"/>',
+        '    <ellipse cx="8" cy="-8" rx="5.6" ry="6.6" fill="#101012"/>',
+        '    <path d="M0 -1 L-3.2 6 L3.2 6 Z" fill="#101012"/>',
+        '    <path d="M-8 12 V20 M-4 12 V20 M0 12 V20 M4 12 V20 M8 12 V20" stroke="#101012" stroke-width="1.6"/>',
+        '  </g>',
+        '  <!-- glowa -->',
+        '  <rect x="136" y="130" width="28" height="30" rx="8" fill="#b88c70"/>',
+        '  <ellipse cx="150" cy="104" rx="30" ry="36" fill="url(#hosSkin)"/>',
+        '  <path d="M120 98 Q122 66 150 64 Q178 66 180 98 Q168 84 150 84 Q132 84 120 98Z" fill="#0d0d0f"/>',
+        '  <path d="M124 112 Q150 150 176 112 Q172 134 150 142 Q128 134 124 112Z" fill="#2c2623" opacity=".75"/>',
+        '  <path d="M130 100 L145 103 M170 100 L155 103" stroke="#18120f" stroke-width="3.4" stroke-linecap="round"/>',
+        '  <path d="M140 124 Q150 128 160 124" stroke="#3a2a22" stroke-width="2.4" fill="none" stroke-linecap="round"/>',
+        '  <!-- ramiona i dlonie na karabinie -->',
+        '  <path d="M82 170 Q50 210 74 262 L122 268 L120 240 L92 236 Q84 206 100 184 Z" fill="#1a1b1e" stroke="#000" stroke-width="2"/>',
+        '  <path d="M218 170 Q250 210 226 262 L178 268 L180 240 L208 236 Q216 206 200 184 Z" fill="#1a1b1e" stroke="#000" stroke-width="2"/>',
+        '  <!-- karabin skierowany w widza -->',
+        '  <rect x="122" y="240" width="56" height="52" rx="7" fill="#1d1e21" stroke="#000" stroke-width="2"/>',
+        '  <rect x="138" y="288" width="24" height="46" rx="4" fill="#141517" stroke="#000" stroke-width="2"/>',
+        '  <circle cx="150" cy="262" r="19" fill="#0b0b0c" stroke="#2c2d31" stroke-width="3"/>',
+        '  <circle cx="150" cy="262" r="9" fill="#000"/>',
+        '  <circle cx="150" cy="262" r="3" fill="#3b3c42"/>',
+        '  <circle cx="108" cy="262" r="12" fill="#a97f64" stroke="#000" stroke-width="1.5"/>',
+        '  <circle cx="192" cy="262" r="12" fill="#a97f64" stroke="#000" stroke-width="1.5"/>',
+        '</svg>'
+    ]
+    end "\n" + str_join(l, "\n")
+]
+
+fun idle_crack_svg() -> Str [
+    end '<svg viewBox="0 0 52 52"><path d="M21 21 L4 8 M21 21 L46 14 M21 21 L40 44 M21 21 L8 40 M21 21 L26 2" stroke="rgba(255,255,255,.75)" stroke-width="1.4" fill="none" stroke-linecap="round"/></svg>'
+]
+
+!!! Wykonuje `fn` ze sceny, o ile nie zostala anulowana.
+fun idle_run_guard(scene, fn) [
+    if not scene.cancelled [
+        fn()
+    ]
+]
+
+fun idle_after(scene, ms, fn) [
+    scene.timers.push(window.setTimeout(idle_run_guard.bind(null, scene, fn), ms))
+]
+
+fun idle_pun_exec(scene, res, rej) [
+    scene.finish = res
+]
+
+fun idle_pun_enter(scene) [
+    scene.dim.classList.add("on")
+    scene.man.classList.add("up")
+]
+
+fun idle_pun_locate(scene) [
+    let r = scene.man.getBoundingClientRect()
+    scene.mx = r.left + r.width * idle_muzzle_x
+    scene.my = r.top + r.height * idle_muzzle_y
+    let fs = u_clamp(r.height * 0.34, 90, 240)
+    scene.flash.style.width = fs + "px"
+    scene.flash.style.height = fs + "px"
+    scene.flash.style.left = (scene.mx - fs / 2.0) + "px"
+    scene.flash.style.top = (scene.my - fs / 2.0) + "px"
+]
+
+fun idle_pun_flash_off(scene) [
+    scene.flash.style.opacity = "0"
+    scene.man.style.transform = ""
+]
+
+!!! Po dotarciu pocisku: pekniecie na ekranie.
+fun idle_pun_grow_done(scene, tr, tx, ty, v) [
+    tr.remove()
+    if scene.cancelled [
+        end 0
+    ]
+    let hit = document.createElement("div")
+    hit.className = "hos-hit"
+    hit.style.left = tx + "px"
+    hit.style.top = ty + "px"
+    hit.innerHTML = idle_crack_svg()
+    scene.layer.append(hit)
+    let kf = u_obj("[{\"transform\":\"scale(.4)\",\"opacity\":1},{\"transform\":\"scale(1.7)\",\"opacity\":0}]")
+    let op = u_obj("{\"duration\":520,\"easing\":\"ease-out\",\"fill\":\"forwards\"}")
+    hit.animate(kf, op).finished.then(hit.remove.bind(hit), u_noop)
+    end 0
+]
+
+fun idle_pun_shoot(scene) [
+    !! blysk z lufy + drgniecie postaci
+    scene.flash.style.opacity = "1"
+    scene.flash.style.transform = "scale(" + u_rnd(0.8, 1.25).toFixed(2) + ") rotate(" + Math.floor(u_rnd(0, 90)) + "deg)"
+    scene.man.style.transform = "translate(calc(-50% + " + u_rnd(-3, 3).toFixed(1) + "px), " + u_rnd(0, 5).toFixed(1) + "px)"
+    idle_after(scene, 55, idle_pun_flash_off.bind(null, scene))
+    !! pocisk leci w strone ekranu
+    let tx = u_rnd(innerWidth * 0.05, innerWidth * 0.95)
+    let ty = u_rnd(innerHeight * 0.05, innerHeight * 0.72)
+    let dx = tx - scene.mx
+    let dy = ty - scene.my
+    let len = Math.hypot(dx, dy)
+    let tr = document.createElement("div")
+    tr.className = "hos-tracer"
+    tr.style.left = scene.mx + "px"
+    tr.style.top = scene.my + "px"
+    tr.style.width = len + "px"
+    tr.style.transform = "rotate(" + Math.atan2(dy, dx) + "rad)"
+    scene.layer.append(tr)
+    let kf = u_obj("[{\"clipPath\":\"inset(0 100% 0 0)\"},{\"clipPath\":\"inset(0 0 0 0)\"}]")
+    let op = u_obj("{\"duration\":120,\"easing\":\"ease-in\",\"fill\":\"forwards\"}")
+    let grow = tr.animate(kf, op)
+    grow.finished.then(idle_pun_grow_done.bind(null, scene, tr, tx, ty), u_noop)
+]
+
+fun idle_pun_leave(scene) [
+    u_cls_remove(scene.man, "up")
+    u_cls_remove(scene.dim, "on")
+]
+
+fun idle_pun_end(scene) [
+    idle_dispose(scene.layer, false)
+    let f = scene.finish
+    f(null)
+]
+
+fun idle_punisher_scene() [
+    let layer = idle_make_layer()
+    let dim = document.createElement("div")
+    dim.className = "hos-dim"
+    let man = document.createElement("div")
+    man.className = "hos-gunman"
+    let h = u_clamp(innerHeight * 0.82, 280, 700)
+    man.style.height = h + "px"
+    man.innerHTML = idle_gunman_svg()
+    let flash = document.createElement("div")
+    flash.className = "hos-flash"
+    layer.append(dim, man, flash)
+
+    let scene = idle_new_scene("punisher", layer)
+    scene.dim = dim
+    scene.man = man
+    scene.flash = flash
+    scene.done = Reflect.construct(Promise, [idle_pun_exec.bind(null, scene)])
+
+    !! wjazd
+    requestAnimationFrame(idle_pun_enter.bind(null, scene))
+
+    !! harmonogram: wjazd -> 4 serie -> zjazd
+    let t = 800
+    idle_after(scene, t, idle_pun_locate.bind(null, scene))
+    t = t + 100
+    for burst in range(0, 4) [
+        let shots = 6 + Math.floor(Math.random() * 5)
+        for s in range(0, shots) [
+            idle_after(scene, t + s * 95, idle_pun_shoot.bind(null, scene))
+        ]
+        t = t + shots * 95 + 650
+    ]
+    idle_after(scene, t, idle_pun_leave.bind(null, scene))
+    idle_after(scene, t + 800, idle_pun_end.bind(null, scene))
+    end scene
+]
+
+!!! ---------------------------------------------------------------- licznik bezczynnosci
+
+fun idle_offline_shown() -> Bool [
+    end document.getElementById("offlineDialog") != null
+]
+
+fun idle_scene_end(id, v) [
+    if idle_cur_id == id [
+        idle_cur = null
+        idle_cur_id = 0
+        idle_previewing = false
+    ]
+    end 0
+]
+
+fun idle_play(name: Str, preview: Bool) [
+    if idle_cur_id != 0 or idle_offline_shown() or document.body == null [
+        end 0
+    ]
+    idle_previewing = preview
+    let scene = null
+    if name == "ufo" [
+        scene = idle_ufo_scene()
+    ] elif name == "punisher" [
+        scene = idle_punisher_scene()
+    ] else [
+        scene = idle_plane_scene()
+    ]
+    idle_cur = scene
+    idle_cur_id = scene.id
+    scene.done.then(idle_scene_end.bind(null, scene.id))
+    end 0
+]
+
+fun idle_activity(e) [
+    idle_last = Date.now()
+    idle_stage = 0
+    if idle_cur_id != 0 and not idle_previewing [
+        idle_cancel(idle_cur)
+        idle_cur = null
+        idle_cur_id = 0
+    ]
+]
+
+!!! Powrot na karte = aktywnosc (licznik nie "dolicza" czasu spedzonego w innej karcie).
+fun idle_on_visibility(e) [
+    if not document.hidden [
+        idle_activity(null)
+    ]
+]
+
+fun idle_tick() [
+    if document.hidden or idle_cur_id != 0 or idle_stage >= idle_order.len() [
+        end 0
+    ]
+    if Date.now() - idle_last >= idle_step * (idle_stage + 1) [
+        let name = idle_order[idle_stage]
+        idle_play(name, false)
+        idle_stage = idle_stage + 1
+    ]
+    end 0
+]
+
+fun idle_demo_start(name: Str) [
+    idle_play(name, true)
+]
+
+fun idle_init() [
+    let params = Reflect.construct(URLSearchParams, [location.search])
+    let q = u_call(params, "get", ["idle"])
+    let demo = ""
+    if q != null [
+        for n in idle_order [
+            if n == q [
+                demo = n
+            ]
+        ]
+    ]
+    idle_step = idle_default_step
+    if q != null and demo == "" [
+        let sec = Number(q)
+        if Number.isFinite(sec) and sec >= 1 [
+            idle_step = sec * 1000
+        ]
+    ]
+
+    idle_last = Date.now()
+    idle_stage = 0
+    idle_cur = null
+    idle_cur_id = 0
+    idle_previewing = false
+
+    let events = ["mousemove", "mousedown", "keydown", "touchstart", "wheel", "scroll", "pointerdown"]
+    for ev in events [
+        window.addEventListener(ev, idle_activity, u_obj("{\"passive\":true,\"capture\":true}"))
+    ]
+    document.addEventListener("visibilitychange", idle_on_visibility)
+    setInterval(idle_tick, 1000)
+
+    if demo != "" [
+        window.setTimeout(idle_demo_start.bind(null, demo), 600)
+    ]
+]
