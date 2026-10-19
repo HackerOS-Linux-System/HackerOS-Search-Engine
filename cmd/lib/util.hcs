@@ -1,0 +1,138 @@
+let u_try_f = null
+let u_try_ok = false
+let u_ls_k = ""
+let u_ls_v = ""
+let u_ls_out = null
+
+fun u_noop(x) [
+    end 0
+]
+
+!!! Liczba z zakresu [lo, hi].
+fun u_clamp(v, lo, hi) [
+    end Math.max(lo, Math.min(hi, v))
+]
+
+!!! Losowa liczba z przedzialu [a, b).
+fun u_rnd(a, b) [
+    end Math.random() * (b - a) + a
+]
+
+!!! Czy jezyk przegladarki to polski.
+fun u_is_pl() -> Bool [
+    let lang = String(navigator.language or "en").toLowerCase()
+    end str_starts_with(lang, "pl")
+]
+
+fun u_try_exec(res, rej) [
+    let f = u_try_f
+    f()
+    u_try_ok = true
+]
+
+!!! Wywoluje `f()` i polyka wyjatek. Zwraca true, gdy `f` zakonczyla sie bez bledu.
+fun u_try(f) -> Bool [
+    let prev = u_try_f
+    u_try_f = f
+    u_try_ok = false
+    let p = Reflect.construct(Promise, [u_try_exec])
+    p.catch(u_noop)
+    u_try_f = prev
+    end u_try_ok
+]
+
+fun u_ls_get_run() [
+    u_ls_out = localStorage.getItem(u_ls_k)
+]
+
+fun u_ls_set_run() [
+    localStorage.setItem(u_ls_k, u_ls_v)
+]
+
+fun u_ls_remove_run() [
+    localStorage.removeItem(u_ls_k)
+]
+
+!!! localStorage.getItem odporne na brak dostepu - zwraca null, gdy brak klucza albo storage zablokowany.
+fun u_ls_get(key: Str) [
+    u_ls_k = key
+    u_ls_out = null
+    u_try(u_ls_get_run)
+    end u_ls_out
+]
+
+fun u_ls_set(key: Str, value: Str) [
+    u_ls_k = key
+    u_ls_v = value
+    u_try(u_ls_set_run)
+]
+
+fun u_ls_remove(key: Str) [
+    u_ls_k = key
+    u_try(u_ls_remove_run)
+]
+
+!!! Obiekt JS z tekstu JSON (zamiast literalu `{ ... }`, ktorego jezyk nie ma).
+fun u_obj(json: Str) [
+    end JSON.parse(json)
+]
+
+!!! Tworzy element `tag` z klasa i tekstem, dolacza go do `parent` i zwraca.
+fun u_el(parent, tag: Str, cls: Str, text: Str) [
+    let e = document.createElement(tag)
+    if cls != "" [
+        e.className = cls
+    ]
+    if text != "" [
+        e.textContent = text
+    ]
+    parent.appendChild(e)
+    end e
+]
+
+!!! Ustawia kilka atrybutow naraz: u_attrs(el, ["href", "x", "target", "_blank"]).
+fun u_attrs(e, kv: List<Str>) [
+    let i = 0
+    while i + 1 < kv.len() [
+        e.setAttribute(kv[i], kv[i + 1])
+        i = i + 2
+    ]
+    end e
+]
+
+!!! Skleja liste napisow (HackerScript nie ma napisow wieloliniowych).
+fun u_join(parts: List<Str>) -> Str [
+    end str_join(parts, "")
+]
+
+!!! Dostep do wlasciwosci, ktorych nazwy sa slowami zastrzezonymi HackerScript
+!!! (np. `.get`, `.end`, `.in`, `.type`, `.match`, `.import`, `.use`, `.as`):
+!!! parser ich nie przyjmuje po kropce, a `type`/`static`/`ref`/`move`... dostaja
+!!! sufiks `_`. Przez te funkcje nazwa idzie jako napis.
+let u_fn_get = Function("o", "k", "return o[k]")
+let u_fn_set = Function("o", "k", "v", "o[k] = v")
+let u_fn_call = Function("o", "k", "a", "return o[k].apply(o, a)")
+
+fun u_get(o, k: Str) [
+    end u_fn_get(o, k)
+]
+
+fun u_set(o, k: Str, v) [
+    u_fn_set(o, k, v)
+]
+
+!!! u_call(obj, "get", [arg1, arg2]) == obj.get(arg1, arg2)
+fun u_call(o, k: Str, a: List) [
+    end u_fn_call(o, k, a)
+]
+
+!!! UWAGA: kompilator zamienia `x.remove(a)` / `x.contains(a)` / `x.insert(a,b)` / `x.clear()`
+!!! / `x.pop()` / `x.sort()` / `x.truncate(n)` na helpery list/map HackerScript, takze dla
+!!! obiektow DOM (classList.remove, classList.contains...) - te dwa omijaja to.
+fun u_cls_remove(el, cls: Str) [
+    u_call(el.classList, "remove", [cls])
+]
+
+fun u_cls_has(el, cls: Str) -> Bool [
+    end u_call(el.classList, "contains", [cls])
+]
