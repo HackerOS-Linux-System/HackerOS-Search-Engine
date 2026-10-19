@@ -1,57 +1,116 @@
-import { build } from 'esbuild';
-import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+use <lang:javascript>
 
-const root = resolve(fileURLToPath(import.meta.url), '..', '..');
-const dist = resolve(root, 'dist');
-const p = (...parts: string[]): string => resolve(root, ...parts);
+!!! scripts/build.hcs - buduje cala strone HackerOS Search do `dist/` (zastepuje scripts/build.ts).
+!!!
+!!! Uruchomienie (przez bit, patrz Bit.hk):
+!!!     bit site
+!!! czyli:
+!!!     hackerc build scripts/build.hcs -o cache/site-build.js && node cache/site-build.js
+!!!
+!!! Zmienne srodowiskowe:
+!!!     HACKERC     sciezka do binarki hackerc (domyslnie `hackerc` z PATH)
+!!!     GITHUB_SHA  identyfikator buildu (domyslnie czas) - nazwa cache Service Workera
+!!!
+!!! Co powstaje w dist/:
+!!!     index.html + script.js   <- src/main.hcs      (strona glowna: czastki, motywy, offline, bezczynnosc)
+!!!     blue.html  + blue.js     <- src/blue.hcs      (ukryta podstrona Blue Edition)
+!!!     404.html                 <- src/page404.hcs   (ekran offline zwyklej strony + 404; JS INLINE)
+!!!     offline.html             <- src/offline.hcs   (ekran offline Blue Edition; JS INLINE)
+!!!     sw.js                    <- src/sw.hcs        (Service Worker, lang:javascript)
+!!!     LICENSE, .nojekyll
+!!!
+!!! Strony 404.html i offline.html musza dzialac w pelni samodzielnie (takze bez internetu i pod
+!!! dowolna sciezka), dlatego ich app.js jest wklejany do HTML-a. Reszta dostaje zewnetrzny plik .js.
 
-// Identyfikator buildu - zmienia nazwę cache w Service Workerze przy każdym wdrożeniu,
-// dzięki czemu użytkownicy dostają świeże pliki.
-const buildId: string = (process.env.GITHUB_SHA ?? Date.now().toString(36)).slice(0, 8);
+let sb_fs = require("fs")
+let sb_cp = require("child_process")
 
-const common = {
-    bundle: true,
-    format: 'iife',
-    target: 'es2020',
-    minify: true,
-    legalComments: 'none',
-    logLevel: 'warning',
-} as const;
+let sb_hackerc = process.env.HACKERC or "hackerc"
+let sb_build_id = String(process.env.GITHUB_SHA or Date.now().toString(36)).slice(0, 8)
+let sb_dist = "dist"
+let sb_tmp = "cache/site"
+let sb_tag = "<script src=\"app.js\"></script>"
 
-rmSync(dist, { recursive: true, force: true });
-mkdirSync(dist, { recursive: true });
+fun sb_sh(cmd: Str) [
+    sb_cp.execSync(cmd, JSON.parse("{\"stdio\":\"inherit\"}"))
+]
 
-// 1) script.ts -> dist/script.js, blue.ts -> dist/blue.js, sw.ts -> dist/sw.js
-//    (guard.ts i idle.ts są wspólnymi modułami - esbuild dołącza je do script.js i blue.js)
-await build({
-    ...common,
-    entryPoints: { script: p('src/script.ts'), blue: p('src/blue.ts'), sw: p('src/sw.ts') },
-    outdir: dist,
-    define: { __BUILD_ID__: JSON.stringify(buildId) },
-});
+fun sb_fail(msg: Str) [
+    console.error("build: " + msg)
+    process.exit(1)
+]
 
-// 2) szablony HTML z kodem wstawianym INLINE (strony muszą działać w pełni samodzielnie, także bez internetu):
-//    - 404.html     <- src/offline.ts      (znacznik @@OFFLINE_JS@@)
-//    - offline.html <- src/offline-page.ts (znacznik @@OFFLINE_PAGE_JS@@)
-async function inlineScript(entry: string, template: string, marker: string, out: string): Promise<void> {
-    const result = await build({ ...common, entryPoints: [p(entry)], write: false });
-    const js: string = result.outputFiles[0].text.replace(/<\/script/gi, '<\\/script');
-    const html: string = readFileSync(p(template), 'utf8');
-    if (!html.includes(marker)) throw new Error(`${template}: brak znacznika ${marker}`);
-    writeFileSync(resolve(dist, out), html.replace(marker, () => js));
-}
-await inlineScript('src/offline.ts', '404.html', '/* @@OFFLINE_JS@@ */', '404.html');
-await inlineScript('src/offline-page.ts', 'offline.html', '/* @@OFFLINE_PAGE_JS@@ */', 'offline.html');
+fun sb_read(path: Str) -> Str [
+    end sb_fs.readFileSync(path, "utf8")
+]
 
-// 3) pliki statyczne
-for (const file of ['index.html', 'styles.css', 'blue.html', 'blue.css', 'LICENSE']) {
-    if (existsSync(p(file))) cpSync(p(file), resolve(dist, file));
-    else console.warn(`UWAGA: brak pliku ${file} - pomijam`);
-}
+fun sb_write(path: Str, text: Str) [
+    sb_fs.writeFileSync(path, text)
+]
 
-// 4) GitHub Pages: wyłącz Jekyll
-writeFileSync(resolve(dist, '.nojekyll'), '');
+!!! Buduje jedna strone: hackerc -> cache/site/<name>/{index.html,app.js} -> dist/.
+!!! `js_name` pusty = JS wklejany inline, inaczej zapisywany jako dist/<js_name>.
+fun sb_page(src: Str, name: Str, html_name: Str, js_name: Str, title: Str) [
+    let out = sb_tmp + "/" + name
+    sb_sh(sb_hackerc + " build " + src + " -o " + out)
+    let html = sb_read(out + "/index.html")
+    !! caly app.js w funkcji: runtime hackerc deklaruje `class HksOption` itd. w zasiegu globalnym, a ekran
+    !! offline jest wstawiany przez document.write() do tego samego okna (guard) - bez tego drugi skrypt
+    !! konczylby sie bledem "Identifier 'HksOption' has already been declared".
+    let js = "(function () {\n" + sb_read(out + "/app.js") + "\n})();\n"
+    if not str_contains(html, sb_tag) [
+        sb_fail(src + ": brak znacznika " + sb_tag + " w wygenerowanym index.html")
+    ]
+    !! tytul z nazwy pliku wejsciowego zastepujemy prawdziwym (strona i tak ustawia go w JS)
+    html = str_replace(html, "<title>" + name + "</title>", "<title>" + title + "</title>")
+    let script = ""
+    if js_name == "" [
+        script = "<script>" + str_replace(js, "</script", "<\\/script") + "</script>"
+    ] else [
+        script = "<script src=\"" + js_name + "\"></script>"
+        sb_write(sb_dist + "/" + js_name, js)
+    ]
+    sb_write(sb_dist + "/" + html_name, str_replace(html, sb_tag, script))
+    if js_name == "" [
+        console.log("build: " + html_name + " (JS inline)")
+    ] else [
+        console.log("build: " + html_name + " + " + js_name)
+    ]
+]
 
-console.log(`Build OK (id: ${buildId}) -> ${dist}`);
+fun main() [
+    sb_fs.rmSync(sb_dist, JSON.parse("{\"recursive\":true,\"force\":true}"))
+    sb_fs.rmSync(sb_tmp, JSON.parse("{\"recursive\":true,\"force\":true}"))
+    sb_fs.mkdirSync(sb_dist, JSON.parse("{\"recursive\":true}"))
+    sb_fs.mkdirSync(sb_tmp, JSON.parse("{\"recursive\":true}"))
+
+    !! 1) strony HTML (hackerc, use <mode:website>)
+    sb_page("src/main.hcs", "main", "index.html", "script.js", "HackerOS Search")
+    sb_page("src/blue.hcs", "blue", "blue.html", "blue.js", "Blue Search")
+    sb_page("src/page404.hcs", "page404", "404.html", "", "HackerOS Search | Offline")
+    sb_page("src/offline.hcs", "offline", "offline.html", "", "Blue Search | Offline")
+
+    !! 2) Service Worker (hackerc, use <lang:javascript>) + identyfikator buildu
+    sb_sh(sb_hackerc + " build src/sw.hcs -o " + sb_dist + "/sw.js")
+    let sw = sb_read(sb_dist + "/sw.js")
+    if not str_contains(sw, "__BUILD_ID__") [
+        sb_fail("sw.js: brak znacznika __BUILD_ID__")
+    ]
+    sb_write(sb_dist + "/sw.js", str_replace(sw, "__BUILD_ID__", sb_build_id))
+    console.log("build: sw.js (cache hackeros-search-" + sb_build_id + ")")
+
+    !! 3) pliki statyczne; GitHub Pages: wylacz Jekyll
+    if sb_fs.existsSync("LICENSE") [
+        sb_fs.copyFileSync("LICENSE", sb_dist + "/LICENSE")
+    ]
+    sb_write(sb_dist + "/.nojekyll", "")
+
+    !! 4) kontrola wyniku
+    let required = ["index.html", "script.js", "blue.html", "blue.js", "404.html", "offline.html", "sw.js"]
+    for f in required [
+        if not sb_fs.existsSync(sb_dist + "/" + f) [
+            sb_fail("brak pliku dist/" + f)
+        ]
+    ]
+    console.log("Build OK (id: " + sb_build_id + ") -> " + sb_dist)
+]
