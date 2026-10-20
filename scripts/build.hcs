@@ -12,11 +12,11 @@ use <lang:javascript>
 !!!     GITHUB_SHA  identyfikator buildu (domyslnie czas) - nazwa cache Service Workera
 !!!
 !!! Co powstaje w dist/:
-!!!     index.html + script.js   <- src/main.hcs      (strona glowna: czastki, motywy, offline, bezczynnosc)
-!!!     blue.html  + blue.js     <- src/blue.hcs      (ukryta podstrona Blue Edition)
-!!!     404.html                 <- src/page404.hcs   (ekran offline zwyklej strony + 404; JS INLINE)
-!!!     offline.html             <- src/offline.hcs   (ekran offline Blue Edition; JS INLINE)
-!!!     sw.js                    <- src/sw.hcs        (Service Worker, lang:javascript)
+!!!     index.html + script.js   <- cmd/main.hcs      (strona glowna: czastki, motywy, offline, bezczynnosc)
+!!!     blue.html  + blue.js     <- cmd/blue.hcs      (ukryta podstrona Blue Edition)
+!!!     404.html                 <- cmd/page404.hcs   (ekran offline zwyklej strony + 404; JS INLINE)
+!!!     offline.html             <- cmd/offline.hcs   (ekran offline Blue Edition; JS INLINE)
+!!!     sw.js                    <- cmd/sw.hcs        (Service Worker, lang:javascript)
 !!!     LICENSE, .nojekyll
 !!!
 !!! Strony 404.html i offline.html musza dzialac w pelni samodzielnie (takze bez internetu i pod
@@ -85,13 +85,13 @@ fun main() [
     sb_fs.mkdirSync(sb_tmp, JSON.parse("{\"recursive\":true}"))
 
     !! 1) strony HTML (hackerc, use <mode:website>)
-    sb_page("src/main.hcs", "main", "index.html", "script.js", "HackerOS Search")
-    sb_page("src/blue.hcs", "blue", "blue.html", "blue.js", "Blue Search")
-    sb_page("src/page404.hcs", "page404", "404.html", "", "HackerOS Search | Offline")
-    sb_page("src/offline.hcs", "offline", "offline.html", "", "Blue Search | Offline")
+    sb_page("cmd/main.hcs", "main", "index.html", "script.js", "HackerOS Search")
+    sb_page("cmd/blue.hcs", "blue", "blue.html", "blue.js", "Blue Search")
+    sb_page("cmd/page404.hcs", "page404", "404.html", "", "HackerOS Search | Offline")
+    sb_page("cmd/offline.hcs", "offline", "offline.html", "", "Blue Search | Offline")
 
     !! 2) Service Worker (hackerc, use <lang:javascript>) + identyfikator buildu
-    sb_sh(sb_hackerc + " build src/sw.hcs -o " + sb_dist + "/sw.js")
+    sb_sh(sb_hackerc + " build cmd/sw.hcs -o " + sb_dist + "/sw.js")
     let sw = sb_read(sb_dist + "/sw.js")
     if not str_contains(sw, "__BUILD_ID__") [
         sb_fail("sw.js: brak znacznika __BUILD_ID__")
