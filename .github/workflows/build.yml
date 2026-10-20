@@ -32,6 +32,16 @@ jobs:
       # Strona jest w całości w HackerScript (use <mode:website>) - nie ma już TypeScriptu,
       # npm ani esbuilda. Potrzebne są: bit (uruchamia polecenie `site` z Bit.hk),
       # hackerc (kompilator HackerScript) i Node.js (uruchamia scripts/build.hcs po kompilacji).
+      - name: Check sources are in the repository
+        run: |
+          missing=0
+          for f in Bit.hk scripts/build.hcs cmd/main.hcs cmd/blue.hcs cmd/page404.hcs cmd/offline.hcs cmd/sw.hcs \
+                   cmd/lib/util.hcs cmd/lib/guard.hcs cmd/lib/idle.hcs; do
+            if [ ! -f "$f" ]; then echo "::error::brak pliku $f w repozytorium (czy katalog cmd/ i scripts/ zostały dodane do commita?)"; missing=1; fi
+          done
+          git ls-files | head -50
+          [ "$missing" = 0 ]
+
       - name: Download bit
         run: |
           mkdir -p "$HOME/.local/bin"
